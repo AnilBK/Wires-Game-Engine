@@ -63,6 +63,8 @@ def main():
     panning = False
     last_mouse_pos = pygame.mouse.get_pos()
 
+    cat_sprite = pygame.image.load("cat.png").convert_alpha()
+
     running = True
     while running:
         current_mouse_pos = pygame.mouse.get_pos()
@@ -89,6 +91,10 @@ def main():
         screen.fill(BG_COLOR)
 
         draw_grid(screen, WIDTH, HEIGHT)
+
+        cat_x, cat_y = world_to_screen((0, 0))
+        cat_rect = cat_sprite.get_rect(center=(int(cat_x), int(cat_y)))
+        screen.blit(cat_sprite, cat_rect.topleft)
 
         pygame.display.flip()
 
