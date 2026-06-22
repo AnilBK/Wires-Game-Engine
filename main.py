@@ -146,6 +146,7 @@ def main():
     dragging_node: Optional[GraphNode] = None
     drag_offset = pygame.Vector2()
 
+    clock = pygame.time.Clock()
     running = True
     while running:
         current_mouse_pos = pygame.mouse.get_pos()
@@ -192,6 +193,8 @@ def main():
         node.draw(screen)
 
         pygame.display.flip()
+
+        clock.tick(60)
 
     pygame.quit()
     sys.exit()
