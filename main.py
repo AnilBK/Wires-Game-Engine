@@ -10,6 +10,21 @@ WIDTH, HEIGHT = 800, 600
 GRID_COLOR = (45, 45, 45)
 GRID_COLOR_DARK = (25, 25, 25)
 
+NODE_WIDTH = 180
+HEADER_HEIGHT = 28
+RADIUS = 10
+
+LINE_SEPARATION_COLOR = (10, 10, 10, 150)
+
+BODY_TOP_COLOR = (60, 60, 60, 220)
+BODY_BOTTOM_COLOR = (20, 20, 20, 220)
+
+GRID_ROW_HEIGHT = 26
+GRID_ROW_COLOR = (255, 255, 255, 20)
+
+OUTER_BORDER_COLOR = (0, 0, 0, 255)
+INNER_BORDER_COLOR = (255, 255, 255, 30)
+
 pygame.init()
 
 try:
@@ -54,6 +69,37 @@ def draw_text_shadow(
     surface.blit(text_surf, pos)
 
 
+_surface_cache = {}
+
+
+def get_gradient_surface(width, height, top_color, bottom_color):
+    key = ("grad", width, height, top_color, bottom_color)
+    if key not in _surface_cache:
+        surface = pygame.Surface((width, height), pygame.SRCALPHA)
+
+        for y in range(height):
+            t = y / (height - 1) if height > 1 else 0
+            color = [
+                int(top_color[i] + (bottom_color[i] - top_color[i]) * t)
+                for i in range(len(top_color))
+            ]
+            pygame.draw.line(surface, color, (0, y), (width, y))
+
+        _surface_cache[key] = surface
+    return _surface_cache[key]
+
+
+def get_rounded_rect_mask(width, height, radius):
+    key = ("mask", width, height, radius)
+    if key not in _surface_cache:
+        mask = pygame.Surface((width, height), pygame.SRCALPHA)
+        pygame.draw.rect(
+            mask, (255, 255, 255, 255), (0, 0, width, height), border_radius=radius
+        )
+        _surface_cache[key] = mask
+    return _surface_cache[key]
+
+
 class GraphNode:
     def __init__(
         self,
@@ -71,14 +117,84 @@ class GraphNode:
         self.inputs = inputs
         self.outputs = outputs
 
+        self.bg_surface: pygame.Surface
+
+        self._build_cached_surface()
+
     def pos(self) -> pygame.Vector2:
         return self.position
 
     def draw(self, surface: pygame.Surface) -> None:
         screen_pos = world_to_screen(self.pos())
         x, y = int(screen_pos.x), int(screen_pos.y)
-        pygame.draw.rect(surface, self.header_color, (x, y, 150, 30))
-        draw_text_shadow(surface, self.title, TITLE_FONT, screen_pos)
+
+        surface.blit(self.bg_surface, (x, y))
+
+    def _build_cached_surface(self):
+        max_total_items = max(len(self.inputs), len(self.outputs))
+
+        width = NODE_WIDTH
+        height = HEADER_HEIGHT + max_total_items * GRID_ROW_HEIGHT
+
+        content = pygame.Surface((width, height), pygame.SRCALPHA)
+
+        # Header.
+        pygame.draw.rect(
+            content,
+            self.header_color,
+            (0, 0, width, HEADER_HEIGHT),
+            border_top_left_radius=RADIUS,
+            border_top_right_radius=RADIUS,
+        )
+
+        draw_text_shadow(content, self.title, TITLE_FONT, pygame.Vector2(10, 6))
+
+        # Horizontal line separating header from body.
+        pygame.draw.line(
+            content,
+            LINE_SEPARATION_COLOR,
+            (0, HEADER_HEIGHT),
+            (width, HEADER_HEIGHT),
+            2,
+        )
+
+        # Body gradient.
+        body_height = height - HEADER_HEIGHT
+        body_gradient = get_gradient_surface(
+            width, body_height, BODY_TOP_COLOR, BODY_BOTTOM_COLOR
+        )
+        content.blit(body_gradient, (0, HEADER_HEIGHT))
+
+        # Currently drawing lines for input and output pins.
+        # TODO: Render the pins themselves and their labels.
+        y = HEADER_HEIGHT
+        for _ in range(max_total_items):
+            pygame.draw.line(content, GRID_ROW_COLOR, (0, y), (width, y))
+            y += GRID_ROW_HEIGHT
+
+        # Rounded rect mask to clip all rendered content to a rounded rectangle shape.
+        rounded_rect_mask = get_rounded_rect_mask(width, height, RADIUS)
+        content.blit(rounded_rect_mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+
+        # Outer border.
+        pygame.draw.rect(
+            content,
+            OUTER_BORDER_COLOR,
+            (0, 0, width, height),
+            width=1,
+            border_radius=RADIUS,
+        )
+
+        # Inner very transparent white border for a subtle highlight effect.
+        pygame.draw.rect(
+            content,
+            INNER_BORDER_COLOR,
+            (1, 1, width - 2, height - 2),
+            width=1,
+            border_radius=RADIUS - 1,
+        )
+
+        self.bg_surface = content
 
     def get_rect(self) -> pygame.Rect:
         screen_pos = world_to_screen(self.pos())
