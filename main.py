@@ -1,4 +1,5 @@
-from typing import Optional
+from enum import Enum
+from typing import Dict, Optional
 
 import pygame
 import sys
@@ -13,6 +14,7 @@ GRID_COLOR_DARK = (25, 25, 25)
 NODE_WIDTH = 180
 HEADER_HEIGHT = 28
 RADIUS = 10
+PIN_SIDE_PADDING = 14
 
 LINE_SEPARATION_COLOR = (10, 10, 10, 150)
 
@@ -100,29 +102,186 @@ def get_rounded_rect_mask(width, height, radius):
     return _surface_cache[key]
 
 
+class PinType(Enum):
+    EXEC = 0
+    BOOL = 1
+    INT = 2
+    FLOAT = 3
+    STRING = 4
+    LIST = 5
+    WILDCARD = 6
+    VECTOR2 = 7
+    VECTOR3 = 8
+
+
+PinColorMap: Dict[PinType, tuple] = {
+    PinType.EXEC: (255, 255, 255),
+    PinType.BOOL: (149, 0, 0),
+    PinType.INT: (22, 222, 185),
+    PinType.FLOAT: (158, 250, 68),
+    PinType.STRING: (250, 0, 208),
+    PinType.LIST: (30, 144, 255),
+    PinType.WILDCARD: (160, 160, 160),
+    PinType.VECTOR2: (156, 224, 85),
+    PinType.VECTOR3: (255, 204, 38),
+}
+
+
+class PinDirection(Enum):
+    INPUT = 0
+    OUTPUT = 1
+
+
+class Pin:
+    def __init__(self, name: str, pin_type: PinType) -> None:
+        self.name = name
+        self.pin_type: PinType = pin_type
+        self.pin_direction: Optional[PinDirection] = None
+        self.hovered: bool = False
+
+    def get_icon_rect(self, pos: pygame.Vector2) -> pygame.Rect:
+        if self.pin_type == PinType.EXEC:
+            return pygame.Rect(int(pos.x - 8), int(pos.y - 1), 16, 14)
+
+        return pygame.Rect(int(pos.x - 5), int(pos.y), 10, 10)
+
+    def get_label_rect(self, pos: pygame.Vector2) -> pygame.Rect:
+        if self.pin_type == PinType.EXEC:
+            return pygame.Rect(0, 0, 0, 0)
+
+        text_width, text_height = FONT.size(self.name)
+
+        if self.pin_direction == PinDirection.INPUT:
+            return pygame.Rect(int(pos.x + 10), int(pos.y), text_width, text_height)
+
+        if self.pin_direction == PinDirection.OUTPUT:
+            return pygame.Rect(
+                int(pos.x - text_width - 10), int(pos.y), text_width, text_height
+            )
+
+        return pygame.Rect(0, 0, 0, 0)
+
+    def get_rect(self, pos: pygame.Vector2) -> pygame.Rect:
+        icon_rect = self.get_icon_rect(pos)
+        label_rect = self.get_label_rect(pos)
+
+        if label_rect.width == 0 or label_rect.height == 0:
+            return icon_rect
+
+        return icon_rect.union(label_rect)
+
+    def draw(self, surface: pygame.Surface, pos: pygame.Vector2) -> None:
+        # Execute pins just have a pentagon pointing right.
+        # No labels are drawn for execute pins.
+        if self.pin_type == PinType.EXEC:
+            x = pos.x - 7.5
+            y = pos.y - 1
+
+            points = [
+                (x, y),  # top-left anchor
+                (x + 8, y),  # top edge right
+                (x + 15, y + 6),  # right tip
+                (x + 8, y + 12),  # bottom-right
+                (x, y + 12),  # bottom-left
+            ]
+
+            if self.hovered:
+                pygame.draw.polygon(surface, PinColorMap[self.pin_type], points)
+            else:
+                pygame.draw.polygon(
+                    surface, PinColorMap[self.pin_type], points, width=2
+                )
+        else:
+            if self.pin_direction == PinDirection.INPUT:
+                pygame.draw.circle(
+                    surface, PinColorMap[self.pin_type], (int(pos.x), int(pos.y + 5)), 5
+                )
+                text_surf = FONT.render(self.name, True, (255, 255, 255))
+                surface.blit(text_surf, (pos.x + 10, pos.y))
+            elif self.pin_direction == PinDirection.OUTPUT:
+                pygame.draw.circle(
+                    surface, PinColorMap[self.pin_type], (int(pos.x), int(pos.y + 5)), 5
+                )
+                text_surf = FONT.render(self.name, True, (255, 255, 255))
+                surface.blit(text_surf, (pos.x - text_surf.get_width() - 10, pos.y))
+
+
 class GraphNode:
     def __init__(
         self,
         x: float,
         y: float,
         title: str,
-        inputs: list,
-        outputs: list,
         header_color: tuple,
     ) -> None:
         self.position: pygame.Vector2 = pygame.Vector2(x, y)
         self.title: str = title
         self.header_color: tuple = header_color
 
-        self.inputs = inputs
-        self.outputs = outputs
+        self.inputs: list[Pin] = []
+        self.outputs: list[Pin] = []
 
-        self.bg_surface: pygame.Surface
+        self.bg_surface: pygame.Surface = pygame.Surface(
+            (NODE_WIDTH, HEADER_HEIGHT), pygame.SRCALPHA
+        )
+
+        self.mouse_hovered: bool = False
 
         self._build_cached_surface()
 
     def pos(self) -> pygame.Vector2:
         return self.position
+
+    def _get_input_pin_pos(self, index: int) -> pygame.Vector2:
+        return pygame.Vector2(
+            PIN_SIDE_PADDING, HEADER_HEIGHT + index * GRID_ROW_HEIGHT + 6
+        )
+
+    def _get_output_pin_pos(self, index: int) -> pygame.Vector2:
+        return pygame.Vector2(
+            NODE_WIDTH - PIN_SIDE_PADDING, HEADER_HEIGHT + index * GRID_ROW_HEIGHT + 6
+        )
+
+    def add_input(self, pin: Pin) -> None:
+        pin.pin_direction = PinDirection.INPUT
+        self.inputs.append(pin)
+        self._build_cached_surface()
+
+    def add_output(self, pin: Pin) -> None:
+        pin.pin_direction = PinDirection.OUTPUT
+        self.outputs.append(pin)
+        self._build_cached_surface()
+
+    def handle_events(
+        self, event: pygame.event.Event, world_mouse: pygame.Vector2
+    ) -> None:
+        if event.type == pygame.MOUSEMOTION:
+            local_mouse = world_mouse - self.pos()
+            local_mouse_i_x = int(local_mouse.x)
+            local_mouse_i_y = int(local_mouse.y)
+
+            needs_rebuild = False
+
+            for index, pin in enumerate(self.inputs):
+                pin_pos = self._get_input_pin_pos(index)
+                is_hovered = pin.get_rect(pin_pos).collidepoint(
+                    (local_mouse_i_x, local_mouse_i_y)
+                )
+                if is_hovered != pin.hovered:
+                    pin.hovered = is_hovered
+                    needs_rebuild = True
+
+            for index, pin in enumerate(self.outputs):
+                pin_pos = self._get_output_pin_pos(index)
+                is_hovered = pin.get_rect(pin_pos).collidepoint(
+                    (local_mouse_i_x, local_mouse_i_y)
+                )
+                if is_hovered != pin.hovered:
+                    pin.hovered = is_hovered
+                    needs_rebuild = True
+
+            if needs_rebuild:
+                self._build_cached_surface()
 
     def draw(self, surface: pygame.Surface) -> None:
         screen_pos = world_to_screen(self.pos())
@@ -172,6 +331,14 @@ class GraphNode:
             pygame.draw.line(content, GRID_ROW_COLOR, (0, y), (width, y))
             y += GRID_ROW_HEIGHT
 
+        for index, pin in enumerate(self.inputs):
+            pin_pos = self._get_input_pin_pos(index)
+            pin.draw(content, pin_pos)
+
+        for index, pin in enumerate(self.outputs):
+            pin_pos = self._get_output_pin_pos(index)
+            pin.draw(content, pin_pos)
+
         # Rounded rect mask to clip all rendered content to a rounded rectangle shape.
         rounded_rect_mask = get_rounded_rect_mask(width, height, RADIUS)
         content.blit(rounded_rect_mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
@@ -199,7 +366,7 @@ class GraphNode:
     def get_rect(self) -> pygame.Rect:
         screen_pos = world_to_screen(self.pos())
         x, y = int(screen_pos.x), int(screen_pos.y)
-        return pygame.Rect(x, y, 150, 30)
+        return pygame.Rect(x, y, NODE_WIDTH, HEADER_HEIGHT)
 
     def handle_mouse(
         self, event: pygame.event.Event, world_mouse: pygame.Vector2
@@ -257,7 +424,14 @@ def main():
 
     cat_sprite = pygame.image.load("cat.png").convert_alpha()
 
-    node = GraphNode(100, 100, "Test Node", ["In1", "In2"], ["Out1"], (200, 50, 50))
+    exec_left_pin = Pin("Exec Left", PinType.EXEC)
+    exec_right_pin = Pin("Exec Right", PinType.EXEC)
+    delta_pin = Pin("DeltaTime", PinType.FLOAT)
+
+    node = GraphNode(100, 100, "Event BeginPlay", (200, 50, 50))
+    node.add_input(exec_left_pin)
+    node.add_output(exec_right_pin)
+    node.add_output(delta_pin)
 
     dragging_node: Optional[GraphNode] = None
     drag_offset = pygame.Vector2()
@@ -297,6 +471,8 @@ def main():
             elif event.type == pygame.VIDEORESIZE:
                 print(f"Window resized to: {event.w}x{event.h}")
                 WIDTH, HEIGHT = screen.get_size()
+
+            node.handle_events(event, world_mouse)
 
         screen.fill(BG_COLOR)
 
