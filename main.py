@@ -478,14 +478,23 @@ def main():
 
     cat_sprite = pygame.image.load("cat.png").convert_alpha()
 
-    exec_left_pin = Pin("Exec Left", PinType.EXEC)
-    exec_right_pin = Pin("Exec Right", PinType.EXEC)
-    delta_pin = Pin("DeltaTime", PinType.FLOAT)
+    begin_play_exec_left_pin = Pin("Exec Left", PinType.EXEC)
+    begin_play_exec_right_pin = Pin("Exec Right", PinType.EXEC)
+    begin_play_delta_pin = Pin("DeltaTime", PinType.FLOAT)
 
-    node = GraphNode(100, 100, "Event BeginPlay", (200, 50, 50))
-    node.add_input(exec_left_pin)
-    node.add_output(exec_right_pin)
-    node.add_output(delta_pin)
+    begin_play_node = GraphNode(100, 100, "Event BeginPlay", (200, 50, 50))
+    begin_play_node.add_input(begin_play_exec_left_pin)
+    begin_play_node.add_output(begin_play_exec_right_pin)
+    begin_play_node.add_output(begin_play_delta_pin)
+
+    print_node = GraphNode(400, 100, "Print Hello World", (50, 200, 50))
+    print_node_exec_left_pin = Pin("Exec Left", PinType.EXEC)
+    print_node.add_input(print_node_exec_left_pin)
+
+    print_node_exec_right_pin = Pin("Exec Right", PinType.EXEC)
+    print_node.add_output(print_node_exec_right_pin)
+
+    graph: list[GraphNode] = [begin_play_node, print_node]
 
     dragging_node: Optional[GraphNode] = None
     drag_offset = pygame.Vector2()
@@ -509,9 +518,13 @@ def main():
                 if event.button == 2:  # Middle mouse button
                     panning = True
                 elif event.button == 1:  # Left mouse button
-                    if node.handle_mouse(event, world_mouse):
-                        dragging_node = node
-                        drag_offset = world_mouse - dragging_node.pos()
+                    for node in reversed(
+                        graph
+                    ):  # Check nodes in reverse order for proper z-index
+                        if node.handle_mouse(event, world_mouse):
+                            dragging_node = node
+                            drag_offset = world_mouse - dragging_node.pos()
+                            break
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 2:
                     panning = False
@@ -526,7 +539,8 @@ def main():
                 print(f"Window resized to: {event.w}x{event.h}")
                 WIDTH, HEIGHT = screen.get_size()
 
-            node.handle_events(event, world_mouse)
+            for node in graph:
+                node.handle_events(event, world_mouse)
 
         screen.fill(BG_COLOR)
 
@@ -536,7 +550,8 @@ def main():
         cat_rect = cat_sprite.get_rect(center=(int(cat_pos.x), int(cat_pos.y)))
         screen.blit(cat_sprite, cat_rect.topleft)
 
-        node.draw(screen)
+        for node in graph:
+            node.draw(screen)
 
         pygame.display.flip()
 
