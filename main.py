@@ -150,13 +150,15 @@ class Pin:
             return pygame.Rect(0, 0, 0, 0)
 
         text_width, text_height = FONT.size(self.name)
+        icon_center_y = self.get_icon_rect(pos).centery
+        label_y = int(icon_center_y - text_height / 2)
 
         if self.pin_direction == PinDirection.INPUT:
-            return pygame.Rect(int(pos.x + 10), int(pos.y), text_width, text_height)
+            return pygame.Rect(int(pos.x + 10), label_y, text_width, text_height)
 
         if self.pin_direction == PinDirection.OUTPUT:
             return pygame.Rect(
-                int(pos.x - text_width - 10), int(pos.y), text_width, text_height
+                int(pos.x - text_width - 10), label_y, text_width, text_height
             )
 
         return pygame.Rect(0, 0, 0, 0)
@@ -197,13 +199,19 @@ class Pin:
                     surface, PinColorMap[self.pin_type], (int(pos.x), int(pos.y + 5)), 5
                 )
                 text_surf = FONT.render(self.name, True, (255, 255, 255))
-                surface.blit(text_surf, (pos.x + 10, pos.y))
+                text_rect = text_surf.get_rect()
+                text_rect.x = int(pos.x + 10)
+                text_rect.centery = self.get_icon_rect(pos).centery
+                surface.blit(text_surf, text_rect.topleft)
             elif self.pin_direction == PinDirection.OUTPUT:
                 pygame.draw.circle(
                     surface, PinColorMap[self.pin_type], (int(pos.x), int(pos.y + 5)), 5
                 )
                 text_surf = FONT.render(self.name, True, (255, 255, 255))
-                surface.blit(text_surf, (pos.x - text_surf.get_width() - 10, pos.y))
+                text_rect = text_surf.get_rect()
+                text_rect.x = int(pos.x - text_surf.get_width() - 10)
+                text_rect.centery = self.get_icon_rect(pos).centery
+                surface.blit(text_surf, text_rect.topleft)
 
 
 class GraphNode:
