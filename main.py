@@ -15,6 +15,7 @@ NODE_WIDTH = 180
 HEADER_HEIGHT = 28
 RADIUS = 10
 PIN_SIDE_PADDING = 14
+PIN_HOVER_HORIZONTAL_PADDING = 8
 
 LINE_SEPARATION_COLOR = (10, 10, 10, 150)
 
@@ -137,7 +138,13 @@ class Pin:
         self.name = name
         self.pin_type: PinType = pin_type
         self.pin_direction: Optional[PinDirection] = None
+
         self.hovered: bool = False
+        self.hover_gradient_surface = self._create_hover_gradient_surface()
+
+    def set_direction(self, direction: PinDirection) -> None:
+        self.pin_direction = direction
+        self.hover_gradient_surface = self._create_hover_gradient_surface()
 
     def get_icon_rect(self, pos: pygame.Vector2) -> pygame.Rect:
         if self.pin_type == PinType.EXEC:
@@ -172,7 +179,46 @@ class Pin:
 
         return icon_rect.union(label_rect)
 
+    def get_hover_rect(self, pos: pygame.Vector2) -> pygame.Rect:
+        return self.get_rect(pos).inflate(PIN_HOVER_HORIZONTAL_PADDING * 2, 0)
+
+    def _create_hover_gradient_surface(self) -> pygame.Surface:
+        rect = self.get_hover_rect(pygame.Vector2(0, 0))
+        width = rect.width
+        height = rect.height
+
+        grad_surf = pygame.Surface((width, height), pygame.SRCALPHA)
+
+        fade_width = 12
+
+        self.color = PinColorMap[self.pin_type]
+        r, g, b = self.color[:3]
+
+        for x in range(width):
+            if x < fade_width:
+                ratio = x / fade_width
+            elif x >= width - fade_width:
+                ratio = (width - 1 - x) / fade_width
+            else:
+                ratio = 1.0
+
+            alpha = int(90 * max(0.0, min(1.0, ratio)))
+
+            # Fill one vertical column.
+            pygame.draw.line(
+                grad_surf,
+                (r, g, b, alpha),
+                (x, 0),
+                (x, height - 1),
+            )
+
+        return grad_surf
+
     def draw(self, surface: pygame.Surface, pos: pygame.Vector2) -> None:
+        if self.hovered:
+            hover_rect = self.get_hover_rect(pos)
+            surface.blit(self.hover_gradient_surface, (hover_rect.x, hover_rect.y))
+
         # Execute pins just have a pentagon pointing right.
         # No labels are drawn for execute pins.
         if self.pin_type == PinType.EXEC:
@@ -251,12 +297,12 @@ class GraphNode:
         )
 
     def add_input(self, pin: Pin) -> None:
-        pin.pin_direction = PinDirection.INPUT
+        pin.set_direction(PinDirection.INPUT)
         self.inputs.append(pin)
         self._build_cached_surface()
 
     def add_output(self, pin: Pin) -> None:
-        pin.pin_direction = PinDirection.OUTPUT
+        pin.set_direction(PinDirection.OUTPUT)
         self.outputs.append(pin)
         self._build_cached_surface()
 
