@@ -45,6 +45,12 @@ GRID_MAJOR_EVERY = 60
 
 CAM_POS: pygame.Vector2 = pygame.Vector2(0, 0)
 
+console_logs: List[str] = []
+
+
+def add_console_log(log: str):
+    console_logs.append(log)
+
 
 def world_to_screen(world_pos: pygame.Vector2) -> pygame.Vector2:
     return pygame.Vector2(world_pos) + CAM_POS
@@ -552,6 +558,12 @@ def main():
 
         for node in graph:
             node.draw(screen)
+
+
+        log_pos = pygame.Vector2(20, 20)
+        for i, log in enumerate(console_logs):
+            text_surf = TITLE_FONT.render(log, True, (220, 200, 10))
+            screen.blit(text_surf, log_pos + pygame.Vector2(0, i * 20))
 
         pygame.display.flip()
 
