@@ -45,6 +45,8 @@ GRID_MAJOR_EVERY = 60
 
 CAM_POS: pygame.Vector2 = pygame.Vector2(0, 0)
 
+world_cat_pos = pygame.Vector2(0, 0)
+
 console_logs: List[str] = []
 
 
@@ -552,7 +554,8 @@ def main():
 
         draw_grid(screen, WIDTH, HEIGHT)
 
-        cat_pos = world_to_screen(pygame.Vector2(0, 0))
+        cat_pos = world_to_screen(world_cat_pos)
+
         cat_rect = cat_sprite.get_rect(center=(int(cat_pos.x), int(cat_pos.y)))
         screen.blit(cat_sprite, cat_rect.topleft)
 
