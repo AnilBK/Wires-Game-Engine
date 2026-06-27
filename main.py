@@ -1,5 +1,10 @@
+from collections import deque
+from dataclasses import dataclass
 from enum import Enum
+
+import time
 from typing import Any, Callable, Dict, List, Optional
+import types
 
 import pygame
 import sys
@@ -47,11 +52,24 @@ CAM_POS: pygame.Vector2 = pygame.Vector2(0, 0)
 
 world_cat_pos = pygame.Vector2(0, 0)
 
-console_logs: List[str] = []
+
+@dataclass
+class ConsoleLog:
+    ts: float
+    log: str
+
+
+console_logs = deque()
 
 
 def add_console_log(log: str):
-    console_logs.append(log)
+    console_logs.append(ConsoleLog(time.time(), log))
+
+
+def clear_expired_logs():
+    now = time.time()
+    while console_logs and now - console_logs[0].ts >= 5.0:
+        console_logs.popleft()
 
 
 def world_to_screen(world_pos: pygame.Vector2) -> pygame.Vector2:
@@ -991,9 +1009,11 @@ def main():
             wire_color = PinColorMap[clicked_pin.pin_type]
             draw_bezier(screen, start_pos, end_pos, wire_color, width=3)
 
+        clear_expired_logs()
+
         log_pos = pygame.Vector2(20, 20)
-        for i, log in enumerate(console_logs):
-            text_surf = TITLE_FONT.render(log, True, (220, 200, 10))
+        for i, console_log in enumerate(console_logs):
+            text_surf = TITLE_FONT.render(console_log.log, True, (220, 200, 10))
             screen.blit(text_surf, log_pos + pygame.Vector2(0, i * 20))
 
         pygame.display.flip()
