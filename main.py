@@ -260,7 +260,7 @@ class TextBoxComponent(PinUIComponent):
         text_w = text_surf.get_width()
         box_w = rect.width - 6
         offset_x = 0
-        
+
         if text_w > box_w and self.active:
             offset_x = box_w - text_w
 
@@ -628,9 +628,6 @@ class GraphNode:
 
         self.mouse_hovered: bool = False
 
-    def execute(self) -> Any:
-        print(f"Executing node: {self.title}")
-
     def get_input_value(self, pin_name: str) -> Any:
         for pin in self.inputs:
             if pin.name == pin_name:
@@ -644,8 +641,32 @@ class GraphNode:
                 return None
         return None
 
+    def evaluate(self, pin_name: str) -> Any:
+        """Data nodes like Math/String nodes override it to return data."""
+        return None
+
+    def execute(self, triggered_pin: Optional[Pin] = None):
+        """Control nodes override it to perform actions."""
+        # By default, we just pass the execution to the next node.
+        yield from self.trigger_out_pin()
+
     def get_output_value(self, pin_name: str) -> Any:
-        return self.execute()
+        return self.evaluate(pin_name)
+
+    def trigger_out_pin(self, pin_name: Optional[str] = None):
+        target_pin = None
+        if pin_name:
+            target_pin = self.get_output_pin(pin_name)
+        else:
+            for pin in self.outputs:
+                if pin.pin_type == PinType.EXEC:
+                    target_pin = pin
+                    break
+
+        if target_pin:
+            for connected_pin in target_pin.connected_pins:
+                if connected_pin.node:
+                    yield from connected_pin.node.execute(connected_pin)
 
     def get_output_pin(self, name: str) -> Optional[Pin]:
         for pin in self.outputs:
@@ -950,23 +971,17 @@ class MakeVector2Node(GraphNode):
         self.add_output(Pin("output_vec", PinType.VECTOR2))
         self._build_cached_surface()
 
-    def execute(self):
+    def evaluate(self, pin_name: str):
         x_val = self.get_input_value("input_x")
         y_val = self.get_input_value("input_y")
-
-        add_console_log(f"Vector2 X input: {x_val}")
-        add_console_log(f"Vector2 Y input: {y_val}")
-
         try:
             x = float(x_val) if x_val is not None and x_val != "" else 0.0
         except ValueError:
             x = 0.0
-
         try:
             y = float(y_val) if y_val is not None and y_val != "" else 0.0
         except ValueError:
             y = 0.0
-
         return pygame.Vector2(x, y)
 
 
@@ -977,7 +992,7 @@ class StringConstantNode(GraphNode):
         self.add_output(Pin("String", PinType.STRING, ui_component=self.ui_comp))
         self._build_cached_surface()
 
-    def execute(self):
+    def evaluate(self, pin_name: str):
         return self.ui_comp.get_value()
 
 
@@ -989,13 +1004,15 @@ class SetPositionNode(GraphNode):
         self.add_output(Pin("Exec Right", PinType.EXEC))
         self._build_cached_surface()
 
-    def execute(self):
+    def execute(self, triggered_pin: Optional[Pin] = None):
         vector2_input = self.get_input_value("input_vec")
         if vector2_input is not None:
             global cat
             cat.SetPosition(vector2_input)
         else:
             add_console_log("input_vec is empty.")
+
+        yield from self.trigger_out_pin("Exec Right")
 
 
 class PrintNode(GraphNode):
@@ -1012,12 +1029,14 @@ class PrintNode(GraphNode):
         self.add_output(Pin("Exec Right", PinType.EXEC))
         self._build_cached_surface()
 
-    def execute(self):
+    def execute(self, triggered_pin: Optional[Pin] = None):
         string_value = self.get_input_value("String")
         if string_value is not None:
             add_console_log(f"PrintNode: {string_value}")
         else:
             add_console_log("Hello World from PrintNode!")
+
+        yield from self.trigger_out_pin("Exec Right")
 
 
 class TextInputNode(GraphNode):
@@ -1033,7 +1052,7 @@ class TextInputNode(GraphNode):
         custom_text_w = FONT.size(self.text)[0] + 30
         return max(base_width, custom_text_w)
 
-    def execute(self):
+    def evaluate(self, pin_name: str):
         return self.text
 
     def get_extra_height(self) -> int:
@@ -1107,7 +1126,7 @@ class FloatInputNode(GraphNode):
         self.add_output(Pin("Value", PinType.FLOAT, ui_component=self.ui_comp))
         self._build_cached_surface()
 
-    def execute(self):
+    def evaluate(self, pin_name: str):
         return self.ui_comp.get_value()
 
 
@@ -1118,7 +1137,7 @@ class IntInputNode(GraphNode):
         self.add_output(Pin("Value", PinType.INT, ui_component=self.ui_comp))
         self._build_cached_surface()
 
-    def execute(self):
+    def evaluate(self, pin_name: str):
         return self.ui_comp.get_value()
 
 
@@ -1129,7 +1148,7 @@ class BoolInputNode(GraphNode):
         self.add_output(Pin("Value", PinType.BOOL, ui_component=self.ui_comp))
         self._build_cached_surface()
 
-    def execute(self):
+    def evaluate(self, pin_name: str):
         return self.ui_comp.get_value()
 
 
@@ -1145,13 +1164,20 @@ class InstantiateNode(GraphNode):
         self.instantiated_obj = None
         self._build_cached_surface()
 
-    def execute(self):
+    def execute(self, triggered_pin: Optional[Pin] = None):
         identifier = self.get_input_value("Identifier")
         if identifier:
             self.instantiated_obj = scene.Instantiate(str(identifier))
             add_console_log(f"Instantiated: {identifier}")
         else:
             add_console_log("Instantiate failed: No identifier")
+
+        yield from self.trigger_out_pin("Exec Right")
+
+    def evaluate(self, pin_name: str) -> Any:
+        if pin_name == "Object":
+            return self.instantiated_obj
+        return super().evaluate(pin_name)
 
     def get_output_value(self, pin_name: str) -> Any:
         if pin_name == "Object":
@@ -1168,7 +1194,7 @@ class SetGameObjectPositionNode(GraphNode):
         self.add_output(Pin("Exec Right", PinType.EXEC))
         self._build_cached_surface()
 
-    def execute(self):
+    def execute(self, triggered_pin: Optional[Pin] = None):
         target = self.get_input_value("Target")
         pos = self.get_input_value("Position")
         if target is not None and pos is not None:
@@ -1180,6 +1206,8 @@ class SetGameObjectPositionNode(GraphNode):
         else:
             add_console_log("SetGameObjectPosition failed: Missing Target or Position")
 
+        yield from self.trigger_out_pin("Exec Right")
+
 
 class GetGameObjectPositionNode(GraphNode):
     def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
@@ -1188,7 +1216,7 @@ class GetGameObjectPositionNode(GraphNode):
         self.add_output(Pin("Position", PinType.VECTOR2))
         self._build_cached_surface()
 
-    def execute(self):
+    def evaluate(self, pin_name: str):
         target = self.get_input_value("Target")
         if target is not None:
             return target.GetPosition()
@@ -1202,8 +1230,11 @@ class DoForeverNode(GraphNode):
         self.add_output(Pin("Loop", PinType.EXEC))
         self._build_cached_surface()
 
-    def execute(self):
+    def execute(self, triggered_pin: Optional[Pin] = None):
         add_console_log(f"DoForeverNode initiated: {self.title}")
+        while True:
+            yield from self.trigger_out_pin("Loop")
+            yield
 
 
 class DoOnceNode(GraphNode):
@@ -1215,8 +1246,16 @@ class DoOnceNode(GraphNode):
         self.has_executed = False
         self._build_cached_surface()
 
-    def execute(self):
-        pass
+    def execute(self, triggered_pin: Optional[Pin] = None):
+        if triggered_pin and triggered_pin.name == "Reset":
+            self.has_executed = False
+            add_console_log(f"DoOnce Reset: {self.title}")
+            return
+
+        if not self.has_executed:
+            self.has_executed = True
+            add_console_log(f"DoOnce Executed: {self.title}")
+            yield from self.trigger_out_pin("Completed")
 
 
 class BranchNode(GraphNode):
@@ -1230,8 +1269,12 @@ class BranchNode(GraphNode):
         self.add_output(Pin("False", PinType.EXEC))
         self._build_cached_surface()
 
-    def execute(self):
-        pass
+    def execute(self, triggered_pin: Optional[Pin] = None):
+        condition = self.get_input_value("Condition")
+        if condition:
+            yield from self.trigger_out_pin("True")
+        else:
+            yield from self.trigger_out_pin("False")
 
 
 class ForLoopNode(GraphNode):
@@ -1255,6 +1298,26 @@ class ForLoopNode(GraphNode):
             return self.current_index
         return super().get_output_value(pin_name)
 
+    def execute(self, triggered_pin: Optional[Pin] = None):
+        start_val = self.get_input_value("Start")
+        end_val = self.get_input_value("End")
+
+        start = int(start_val) if start_val is not None else 0
+        end = int(end_val) if end_val is not None else 5
+        step = 1 if start <= end else -1
+
+        for i in range(start, end + step, step):
+            self.current_index = i
+            yield from self.trigger_out_pin("Loop Body")
+            yield
+
+        yield from self.trigger_out_pin("Completed")
+
+    def evaluate(self, pin_name: str) -> Any:
+        if pin_name == "Index":
+            return self.current_index
+        return super().evaluate(pin_name)
+
 
 class SequenceNode(GraphNode):
     def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
@@ -1264,6 +1327,11 @@ class SequenceNode(GraphNode):
         self.add_output(Pin("Then 1", PinType.EXEC))
         self.add_output(Pin("Then 2", PinType.EXEC))
         self._build_cached_surface()
+
+    def execute(self, triggered_pin: Optional[Pin] = None):
+        for pin in self.outputs:
+            if pin.pin_type == PinType.EXEC and pin.name.startswith("Then"):
+                yield from self.trigger_out_pin(pin.name)
 
 
 class DelayNode(GraphNode):
@@ -1276,21 +1344,18 @@ class DelayNode(GraphNode):
         self.add_output(Pin("Exec Right", PinType.EXEC))
         self._build_cached_surface()
 
-    def execute(self):
+    def execute(self, triggered_pin: Optional[Pin] = None):
         add_console_log(f"DelayNode started: {self.title}")
         sec_val = self.get_input_value("Seconds")
-        try:
-            seconds = float(sec_val) if sec_val is not None and sec_val != "" else 1.0
-        except (ValueError, TypeError):
-            seconds = 1.0
+        seconds = float(sec_val) if sec_val is not None and sec_val != "" else 1.0
 
         elapsed = 0.0
         while elapsed < seconds:
             dt = yield
-            if dt is None:
-                dt = 0.0
-            elapsed += dt
+            elapsed += dt or 0.0
+
         add_console_log(f"DelayNode complete: {self.title}")
+        yield from self.trigger_out_pin("Exec Right")
 
 
 class MoveToNode(GraphNode):
@@ -1307,7 +1372,7 @@ class MoveToNode(GraphNode):
         self.add_output(Pin("Exec Right", PinType.EXEC))
         self._build_cached_surface()
 
-    def execute(self):
+    def execute(self, triggered_pin: Optional[Pin] = None):
         add_console_log(f"MoveToNode started: {self.title}")
         p1_val = self.get_input_value("From P1")
         p2_val = self.get_input_value("To P2")
@@ -1315,22 +1380,18 @@ class MoveToNode(GraphNode):
 
         p1 = p1_val if isinstance(p1_val, pygame.Vector2) else pygame.Vector2(0, 0)
         p2 = p2_val if isinstance(p2_val, pygame.Vector2) else pygame.Vector2(400, 300)
-        try:
-            seconds = float(sec_val) if sec_val is not None and sec_val != "" else 1.0
-        except (ValueError, TypeError):
-            seconds = 1.0
+        seconds = float(sec_val) if sec_val is not None and sec_val != "" else 1.0
 
         elapsed = 0.0
         global cat
         while elapsed < seconds:
             dt = yield
-            if dt is None:
-                dt = 0.0
-            elapsed += dt
+            elapsed += dt or 0.0
             t = min(elapsed / seconds, 1.0) if seconds > 0.0 else 1.0
-            current_pos = p1.lerp(p2, t)
-            cat.SetPosition(current_pos)
+            cat.SetPosition(p1.lerp(p2, t))
+
         add_console_log(f"MoveToNode complete: {self.title}")
+        yield from self.trigger_out_pin("Exec Right")
 
 
 class ChangeXByNode(GraphNode):
@@ -1354,46 +1415,30 @@ class ChangeXByNode(GraphNode):
         self.add_output(Pin("Exec Right", PinType.EXEC))
         self._build_cached_surface()
 
-    def execute(self):
+    def execute(self, triggered_pin: Optional[Pin] = None):
         add_console_log(f"ChangeXByNode started: {self.title}")
-
         change_val = self.get_input_value("Change X By")
         sec_val = self.get_input_value("In Seconds")
 
-        try:
-            delta_x = float(change_val)
-        except (ValueError, TypeError):
-            delta_x = 100.0
-
-        try:
-            seconds = float(sec_val)
-        except (ValueError, TypeError):
-            seconds = 1.0
+        delta_x = float(change_val) if change_val is not None else 100.0
+        seconds = float(sec_val) if sec_val is not None else 1.0
 
         global cat
-
         start_pos = cat.GetPosition().copy()
         start_x = start_pos.x
         target_x = start_x + delta_x
 
         elapsed = 0.0
-
         while elapsed < seconds:
             dt = yield
-            if dt is None:
-                dt = 0.0
-
-            elapsed += dt
-
+            elapsed += dt or 0.0
             t = min(elapsed / seconds, 1.0) if seconds > 0 else 1.0
-
             new_x = start_x + (target_x - start_x) * t
-
             cat.SetPosition(pygame.Vector2(new_x, start_pos.y))
 
         cat.SetPosition(pygame.Vector2(target_x, start_pos.y))
-
         add_console_log(f"ChangeXByNode complete: {self.title}")
+        yield from self.trigger_out_pin("Exec Right")
 
 
 class ChangeYByNode(GraphNode):
@@ -1417,137 +1462,30 @@ class ChangeYByNode(GraphNode):
         self.add_output(Pin("Exec Right", PinType.EXEC))
         self._build_cached_surface()
 
-    def execute(self):
+    def execute(self, triggered_pin: Optional[Pin] = None):
         add_console_log(f"ChangeYByNode started: {self.title}")
-
         change_val = self.get_input_value("Change Y By")
         sec_val = self.get_input_value("In Seconds")
 
-        try:
-            delta_y = float(change_val)
-        except (ValueError, TypeError):
-            delta_y = 100.0
-
-        try:
-            seconds = float(sec_val)
-        except (ValueError, TypeError):
-            seconds = 1.0
+        delta_y = float(change_val) if change_val is not None else 100.0
+        seconds = float(sec_val) if sec_val is not None else 1.0
 
         global cat
-
         start_pos = cat.GetPosition().copy()
         start_y = start_pos.y
         target_y = start_y + delta_y
 
         elapsed = 0.0
-
         while elapsed < seconds:
             dt = yield
-            if dt is None:
-                dt = 0.0
-
-            elapsed += dt
-
+            elapsed += dt or 0.0
             t = min(elapsed / seconds, 1.0) if seconds > 0 else 1.0
-
             new_y = start_y + (target_y - start_y) * t
-
             cat.SetPosition(pygame.Vector2(start_pos.x, new_y))
 
         cat.SetPosition(pygame.Vector2(start_pos.x, target_y))
-
         add_console_log(f"ChangeYByNode complete: {self.title}")
-
-
-def run_from_pin(output_pin: Pin):
-    for connected_pin in output_pin.connected_pins:
-        if (
-            connected_pin.pin_direction == PinDirection.INPUT
-            and connected_pin.pin_type == PinType.EXEC
-            and connected_pin.node
-        ):
-            yield from run_node(connected_pin.node, connected_pin)
-
-
-def run_node(node: GraphNode, triggered_pin: Optional[Pin] = None):
-    if node is None:
-        return
-
-    res = node.execute()
-    if isinstance(res, types.GeneratorType):
-        yield from res
-
-    if isinstance(node, DoOnceNode):
-        if triggered_pin and triggered_pin.name == "Reset":
-            node.has_executed = False
-            add_console_log(f"DoOnce Reset: {node.title}")
-            return
-
-        if not node.has_executed:
-            node.has_executed = True
-            add_console_log(f"DoOnce Executed: {node.title}")
-            completed_pin = node.get_output_pin("Completed")
-            if completed_pin:
-                yield from run_from_pin(completed_pin)
-    elif isinstance(node, DoForeverNode):
-        while True:
-            loop_pin = node.get_output_pin("Loop")
-            if loop_pin:
-                yield from run_from_pin(loop_pin)
-            yield  # Yield frame control to prevent frozen engine lockups
-    elif isinstance(node, BranchNode):
-        condition = node.get_input_value("Condition")
-        cond_bool = bool(condition) if condition is not None else False
-        branch_name = "True" if cond_bool else "False"
-        branch_pin = node.get_output_pin(branch_name)
-        if branch_pin:
-            yield from run_from_pin(branch_pin)
-    elif isinstance(node, ForLoopNode):
-        start_val = node.get_input_value("Start")
-        end_val = node.get_input_value("End")
-        try:
-            start = int(start_val) if start_val is not None else 0
-        except (ValueError, TypeError):
-            start = 0
-        try:
-            end = int(end_val) if end_val is not None else 5
-        except (ValueError, TypeError):
-            end = 5
-
-        loop_body_pin = node.get_output_pin("Loop Body")
-        completed_pin = node.get_output_pin("Completed")
-
-        step = 1 if start <= end else -1
-        for i in range(start, end + step, step):
-            node.current_index = i
-            if loop_body_pin:
-                yield from run_from_pin(loop_body_pin)
-            yield
-
-        if completed_pin:
-            yield from run_from_pin(completed_pin)
-    elif isinstance(node, SequenceNode):
-        for pin in node.outputs:
-            if pin.pin_type == PinType.EXEC and pin.name.startswith("Then"):
-                yield from run_from_pin(pin)
-    else:
-        next_node = None
-        next_pin = None
-        for output_pin in node.outputs:
-            if output_pin.pin_type == PinType.EXEC:
-                for connected_pin in output_pin.connected_pins:
-                    if connected_pin.pin_type == PinType.EXEC and connected_pin.node:
-                        next_node = connected_pin.node
-                        next_pin = connected_pin
-                        break
-                if next_node:
-                    break
-        if next_node:
-            yield from run_node(next_node, next_pin)
-
-
-def run_node_chain(start_node: GraphNode):
-    yield from run_node(start_node)
+        yield from self.trigger_out_pin("Exec Right")
 
 
 def draw_grid(screen: pygame.Surface, width: int, height: int) -> None:
@@ -1625,6 +1563,32 @@ class NodePanel:
         screen.set_clip(old_clip)
 
 
+class ExecutionEngine:
+    def __init__(self):
+        self.active_tasks: List[types.GeneratorType] = []
+
+    def start_chain(self, start_node: GraphNode):
+        task_gen = start_node.execute()
+        try:
+            next(task_gen)
+            self.active_tasks.append(task_gen)
+        except StopIteration:
+            pass
+
+    def tick(self, dt: float):
+        still_active = []
+        for task in self.active_tasks:
+            try:
+                task.send(dt)
+                still_active.append(task)
+            except StopIteration:
+                pass
+        self.active_tasks = still_active
+
+    def stop_all(self):
+        self.active_tasks.clear()
+
+
 def main():
     global WIDTH, HEIGHT, CAM_POS
 
@@ -1688,7 +1652,7 @@ def main():
     selected_node: Optional[GraphNode] = None
     drag_offset = pygame.Vector2()
 
-    active_tasks: List[types.GeneratorType] = []
+    vm_engine = ExecutionEngine()
 
     clock = pygame.time.Clock()
     running = True
@@ -1704,14 +1668,7 @@ def main():
         last_mouse_pos = current_mouse_pos
         world_mouse = screen_to_world(pygame.Vector2(current_mouse_pos))
 
-        still_active = []
-        for task in active_tasks:
-            try:
-                task.send(dt)
-                still_active.append(task)
-            except StopIteration:
-                pass
-        active_tasks = still_active
+        vm_engine.tick(dt)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -1885,14 +1842,8 @@ def main():
             elif keys[pygame.K_KP_ENTER] or keys[pygame.K_RETURN]:
                 print("Executing test VM...")
 
-                task_gen = run_node_chain(begin_play_node)
-                try:
-                    next(task_gen)
-                    active_tasks.append(task_gen)
-                except StopIteration:
-                    pass
-
-                print("Execution chain started in parallel.")
+                vm_engine.stop_all()  # Clear previous tasks if any.
+                vm_engine.start_chain(begin_play_node)
 
             is_in_panel = current_mouse_pos[0] < node_panel.width
 
