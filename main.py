@@ -1589,6 +1589,93 @@ class ExecutionEngine:
         self.active_tasks.clear()
 
 
+class InputState:
+    current_keys = None
+    previous_keys = None
+    current_mods = 0
+
+    @classmethod
+    def update(cls):
+        cls.previous_keys = cls.current_keys
+        cls.current_keys = pygame.key.get_pressed()
+        cls.current_mods = pygame.key.get_mods()
+
+
+class BaseKeyboardNode(GraphNode):
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color)
+        self.add_input(
+            Pin("Key", PinType.STRING, ui_component=TextBoxComponent("space", str))
+        )
+        self.add_input(
+            Pin("Ctrl", PinType.BOOL, ui_component=BoolToggleComponent(False))
+        )
+        self.add_input(
+            Pin("Shift", PinType.BOOL, ui_component=BoolToggleComponent(False))
+        )
+        self.add_input(
+            Pin("Alt", PinType.BOOL, ui_component=BoolToggleComponent(False))
+        )
+        self.add_output(Pin("Condition", PinType.BOOL))
+        self._build_cached_surface()
+
+    def get_key_state(self):
+        key_name = self.get_input_value("Key")
+        req_ctrl = self.get_input_value("Ctrl")
+        req_shift = self.get_input_value("Shift")
+        req_alt = self.get_input_value("Alt")
+
+        if InputState.current_keys is None:
+            return False, False, False
+
+        try:
+            # Convert string to pygame keycode ("space", "a", "right")
+            k_code = pygame.key.key_code(str(key_name).strip().lower())
+        except (ValueError, NotImplementedError):
+            return False, False, False
+
+        mods = InputState.current_mods
+        if req_ctrl and not (mods & pygame.KMOD_CTRL):
+            return False, False, False
+        if req_shift and not (mods & pygame.KMOD_SHIFT):
+            return False, False, False
+        if req_alt and not (mods & pygame.KMOD_ALT):
+            return False, False, False
+
+        is_down = bool(InputState.current_keys[k_code])
+        was_down = (
+            bool(InputState.previous_keys[k_code])
+            if InputState.previous_keys
+            else False
+        )
+
+        return True, is_down, was_down
+
+
+class KeyPressedNode(BaseKeyboardNode):
+    def evaluate(self, pin_name: str):
+        valid, is_down, was_down = self.get_key_state()
+        return valid and is_down
+
+
+class KeyPressedJustNowNode(BaseKeyboardNode):
+    def evaluate(self, pin_name: str):
+        valid, is_down, was_down = self.get_key_state()
+        return valid and is_down and not was_down
+
+
+class KeyReleasedNode(BaseKeyboardNode):
+    def evaluate(self, pin_name: str):
+        valid, is_down, was_down = self.get_key_state()
+        return valid and not is_down
+
+
+class KeyReleasedJustNowNode(BaseKeyboardNode):
+    def evaluate(self, pin_name: str):
+        valid, is_down, was_down = self.get_key_state()
+        return valid and not is_down and was_down
+
+
 def main():
     global WIDTH, HEIGHT, CAM_POS
 
@@ -1600,6 +1687,15 @@ def main():
     cat_sprite = pygame.image.load("cat.png").convert_alpha()
 
     node_panel = NodePanel(240)
+
+    node_panel.register_node(KeyPressedNode, "Key Pressed", (180, 100, 100))
+    node_panel.register_node(
+        KeyPressedJustNowNode, "Key Pressed Just Now", (180, 80, 80)
+    )
+    node_panel.register_node(KeyReleasedNode, "Key Released", (180, 100, 100))
+    node_panel.register_node(
+        KeyReleasedJustNowNode, "Key Released Just Now", (180, 80, 80)
+    )
 
     node_panel.register_node(PrintNode, "Print Hello World", (50, 200, 50))
     node_panel.register_node(StringConstantNode, "String Constant", (50, 50, 200))
@@ -1664,6 +1760,8 @@ def main():
             CAM_POS += pygame.Vector2(current_mouse_pos) - pygame.Vector2(
                 last_mouse_pos
             )
+
+        InputState.update()
 
         last_mouse_pos = current_mouse_pos
         world_mouse = screen_to_world(pygame.Vector2(current_mouse_pos))
