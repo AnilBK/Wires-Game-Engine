@@ -1589,6 +1589,10 @@ class ExecutionEngine:
         self.active_tasks.clear()
 
 
+class TimeState:
+    dt: float = 0.0
+
+
 class InputState:
     current_keys = None
     previous_keys = None
@@ -1676,6 +1680,45 @@ class KeyReleasedJustNowNode(BaseKeyboardNode):
         return valid and not is_down and was_down
 
 
+class ContinuousTranslateNode(GraphNode):
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color)
+        self.add_input(Pin("Exec Left", PinType.EXEC))
+        self.add_input(
+            Pin(
+                "Speed X (px/s)",
+                PinType.FLOAT,
+                ui_component=TextBoxComponent("200.0", float),
+            )
+        )
+        self.add_input(
+            Pin(
+                "Speed Y (px/s)",
+                PinType.FLOAT,
+                ui_component=TextBoxComponent("0.0", float),
+            )
+        )
+        self.add_output(Pin("Exec Right", PinType.EXEC))
+        self._build_cached_surface()
+
+    def execute(self, triggered_pin: Optional[Pin] = None):
+        speed_x = self.get_input_value("Speed X (px/s)")
+        speed_y = self.get_input_value("Speed Y (px/s)")
+
+        sx = float(speed_x) if speed_x is not None else 0.0
+        sy = float(speed_y) if speed_y is not None else 0.0
+
+        global cat
+        current_pos = cat.GetPosition()
+
+        new_x = current_pos.x + (sx * TimeState.dt)
+        new_y = current_pos.y + (sy * TimeState.dt)
+
+        cat.SetPosition(pygame.Vector2(new_x, new_y))
+
+        yield from self.trigger_out_pin("Exec Right")
+
+
 def main():
     global WIDTH, HEIGHT, CAM_POS
 
@@ -1716,6 +1759,9 @@ def main():
     node_panel.register_node(MakeVector2Node, "Make Vector2 Node", (200, 50, 50))
     node_panel.register_node(DelayNode, "Delay Node", (100, 100, 100))
     node_panel.register_node(MoveToNode, "Move Cat", (120, 80, 180))
+    node_panel.register_node(
+        ContinuousTranslateNode, "Continuous Translate", (120, 150, 180)
+    )
     node_panel.register_node(ChangeXByNode, "Change X By", (120, 80, 180))
     node_panel.register_node(ChangeYByNode, "Change Y By", (120, 80, 180))
     node_panel.register_node(DoForeverNode, "Do Forever", (110, 110, 110))
@@ -1761,6 +1807,7 @@ def main():
                 last_mouse_pos
             )
 
+        TimeState.dt = dt
         InputState.update()
 
         last_mouse_pos = current_mouse_pos
