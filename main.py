@@ -1680,6 +1680,22 @@ class KeyReleasedJustNowNode(BaseKeyboardNode):
         return valid and not is_down and was_down
 
 
+class MousePositionNode(GraphNode):
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color)
+        self.add_output(Pin("Screen Pos", PinType.VECTOR2))
+        self.add_output(Pin("World Pos", PinType.VECTOR2))
+        self._build_cached_surface()
+
+    def evaluate(self, pin_name: str) -> Any:
+        mx, my = pygame.mouse.get_pos()
+        if pin_name == "Screen Pos":
+            return pygame.Vector2(mx, my)
+        elif pin_name == "World Pos":
+            return screen_to_world(pygame.Vector2(mx, my))
+        return None
+
+
 class ContinuousTranslateNode(GraphNode):
     def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
         super().__init__(x, y, title, header_color)
@@ -1739,6 +1755,7 @@ def main():
     node_panel.register_node(
         KeyReleasedJustNowNode, "Key Released Just Now", (180, 80, 80)
     )
+    node_panel.register_node(MousePositionNode, "Mouse Position", (180, 100, 100))
 
     node_panel.register_node(PrintNode, "Print Hello World", (50, 200, 50))
     node_panel.register_node(StringConstantNode, "String Constant", (50, 50, 200))
