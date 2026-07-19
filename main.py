@@ -1258,6 +1258,32 @@ class DoOnceNode(GraphNode):
             yield from self.trigger_out_pin("Completed")
 
 
+class FlipFlopNode(GraphNode):
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color)
+        self.add_input(Pin("Exec", PinType.EXEC))
+
+        self.add_output(Pin("A", PinType.EXEC))
+        self.add_output(Pin("B", PinType.EXEC))
+        self.add_output(Pin("Is A", PinType.BOOL))
+
+        self.is_a: bool = True
+        self._build_cached_surface()
+
+    def execute(self, triggered_pin: Optional[Pin] = None):
+        if self.is_a:
+            self.is_a = False
+            yield from self.trigger_out_pin("A")
+        else:
+            self.is_a = True
+            yield from self.trigger_out_pin("B")
+
+    def evaluate(self, pin_name: str) -> Any:
+        if pin_name == "Is A":
+            return not self.is_a
+        return super().evaluate(pin_name)
+
+
 class BranchNode(GraphNode):
     def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
         super().__init__(x, y, title, header_color)
@@ -1783,6 +1809,7 @@ def main():
     node_panel.register_node(ChangeYByNode, "Change Y By", (120, 80, 180))
     node_panel.register_node(DoForeverNode, "Do Forever", (110, 110, 110))
     node_panel.register_node(DoOnceNode, "Do Once", (160, 80, 80))
+    node_panel.register_node(FlipFlopNode, "Flip Flop Node", (160, 100, 50))
     node_panel.register_node(BranchNode, "Branch (If/Else)", (160, 100, 50))
     node_panel.register_node(BoolInputNode, "Bool Condition", (100, 100, 100))
     node_panel.register_node(ForLoopNode, "For Loop", (80, 120, 160))
