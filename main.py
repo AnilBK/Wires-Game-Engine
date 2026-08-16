@@ -628,6 +628,10 @@ class GraphNode:
 
         self.mouse_hovered: bool = False
 
+    def poll_event(self) -> bool:
+        """Called automatically every tick by the main loop for root event Nodes. Returns True if this node should trigger."""
+        return False
+
     def get_input_value(self, pin_name: str) -> Any:
         for pin in self.inputs:
             if pin.name == pin_name:
@@ -754,12 +758,28 @@ class GraphNode:
     def add_input(self, pin: Pin) -> None:
         pin.set_direction(PinDirection.INPUT)
         pin.node = self
+
+        # Inherit the click callback for dynamically added pins.
+        if getattr(pin, "on_clicked", None) is None:
+            for existing_pin in self.inputs + self.outputs:
+                if getattr(existing_pin, "on_clicked", None) is not None:
+                    pin.on_clicked = existing_pin.on_clicked
+                    break
+
         self.inputs.append(pin)
         self._build_cached_surface()
 
     def add_output(self, pin: Pin) -> None:
         pin.set_direction(PinDirection.OUTPUT)
         pin.node = self
+
+        # Inherit the click callback for dynamically added pins.
+        if getattr(pin, "on_clicked", None) is None:
+            for existing_pin in self.inputs + self.outputs:
+                if getattr(existing_pin, "on_clicked", None) is not None:
+                    pin.on_clicked = existing_pin.on_clicked
+                    break
+
         self.outputs.append(pin)
         self._build_cached_surface()
 
@@ -957,6 +977,54 @@ class GraphNode:
             ):
                 return True
         return False
+
+
+class DynamicExecNode(GraphNode):
+    """
+    Base class for nodes like Sequence, Branch, Race, and Parallel that can dynamically add an unlimited number of pins.
+    """
+    def __init__(
+        self,
+        x: float,
+        y: float,
+        title: str,
+        header_color: tuple,
+        pin_prefix: str = "Then ",
+    ) -> None:
+        self.pin_prefix = pin_prefix
+        self.dynamic_outputs = []
+        self.add_btn_rect = pygame.Rect(0, 0, 0, 0)
+        super().__init__(x, y, title, header_color)
+
+    def get_extra_height(self) -> int:
+        return 30
+
+    def draw_custom_content(self, surface: pygame.Surface, start_y: int) -> None:
+        btn_w = 60
+        btn_h = 20
+        self.add_btn_rect = pygame.Rect(
+            (self.width - btn_w) // 2, start_y + 5, btn_w, btn_h
+        )
+
+        pygame.draw.rect(surface, (60, 60, 60), self.add_btn_rect, border_radius=4)
+        pygame.draw.rect(
+            surface, (100, 100, 100), self.add_btn_rect, width=1, border_radius=4
+        )
+
+        text_surf = FONT.render("+ Add", True, (255, 255, 255))
+        surface.blit(text_surf, text_surf.get_rect(center=self.add_btn_rect.center))
+
+    def handle_events(
+        self, event: pygame.event.Event, world_mouse: pygame.Vector2
+    ) -> None:
+        super().handle_events(event, world_mouse)
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            local_mouse = world_mouse - self.pos()
+            if self.add_btn_rect.collidepoint(local_mouse.x, local_mouse.y):
+                self.add_exec_pin()
+
+    def add_exec_pin(self) -> None:
+        pass
 
 
 class MakeVector2Node(GraphNode):
@@ -1284,23 +1352,39 @@ class FlipFlopNode(GraphNode):
         return super().evaluate(pin_name)
 
 
-class BranchNode(GraphNode):
+class BranchNode(DynamicExecNode):
     def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
-        super().__init__(x, y, title, header_color)
+        super().__init__(x, y, title, header_color, pin_prefix="True ")
         self.add_input(Pin("Exec Left", PinType.EXEC))
-        self.add_input(
-            Pin("Condition", PinType.BOOL, ui_component=BoolToggleComponent(False))
+        self.false_pin = Pin("False", PinType.EXEC)
+        self.add_exec_pin()
+        
+    def add_exec_pin(self) -> None:
+        idx = len(self.dynamic_outputs)
+
+        # Temporarily remove False pin so it remains at the bottom.
+        if self.false_pin in self.outputs:
+            self.outputs.remove(self.false_pin)
+
+        cond_pin = Pin(
+            f"Condition {idx}", PinType.BOOL, ui_component=BoolToggleComponent(False)
         )
-        self.add_output(Pin("True", PinType.EXEC))
-        self.add_output(Pin("False", PinType.EXEC))
+        self.add_input(cond_pin)
+
+        true_pin = Pin(f"{self.pin_prefix}{idx}", PinType.EXEC)
+        self.add_output(true_pin)
+        self.dynamic_outputs.append(true_pin)
+
+        self.add_output(self.false_pin)
         self._build_cached_surface()
 
     def execute(self, triggered_pin: Optional[Pin] = None):
-        condition = self.get_input_value("Condition")
-        if condition:
-            yield from self.trigger_out_pin("True")
-        else:
-            yield from self.trigger_out_pin("False")
+        for i, true_pin in enumerate(self.dynamic_outputs):
+            cond_val = self.get_input_value(f"Condition {i}")
+            if cond_val:
+                yield from self.trigger_out_pin(true_pin.name)
+                return
+        yield from self.trigger_out_pin("False")
 
 
 class ForLoopNode(GraphNode):
@@ -1345,19 +1429,128 @@ class ForLoopNode(GraphNode):
         return super().evaluate(pin_name)
 
 
-class SequenceNode(GraphNode):
+class SequenceNode(DynamicExecNode):
     def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
-        super().__init__(x, y, title, header_color)
+        super().__init__(x, y, title, header_color, pin_prefix="Then ")
         self.add_input(Pin("Exec Left", PinType.EXEC))
-        self.add_output(Pin("Then 0", PinType.EXEC))
-        self.add_output(Pin("Then 1", PinType.EXEC))
-        self.add_output(Pin("Then 2", PinType.EXEC))
+        self.add_exec_pin()
+        self.add_exec_pin()
+
+    def add_exec_pin(self) -> None:
+        idx = len(self.dynamic_outputs)
+        new_pin = Pin(f"{self.pin_prefix}{idx}", PinType.EXEC)
+        self.add_output(new_pin)
+        self.dynamic_outputs.append(new_pin)
         self._build_cached_surface()
 
     def execute(self, triggered_pin: Optional[Pin] = None):
-        for pin in self.outputs:
-            if pin.pin_type == PinType.EXEC and pin.name.startswith("Then"):
-                yield from self.trigger_out_pin(pin.name)
+        for pin in self.dynamic_outputs:
+            yield from self.trigger_out_pin(pin.name)
+
+
+class RaceNode(DynamicExecNode):
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color, pin_prefix="Branch ")
+        self.add_input(Pin("Exec Left", PinType.EXEC))
+        self.completed_pin = Pin("Completed", PinType.EXEC)
+        self.add_output(self.completed_pin)
+        self.add_exec_pin()
+        self.add_exec_pin()
+
+    def add_exec_pin(self) -> None:
+        idx = len(self.dynamic_outputs)
+        if self.completed_pin in self.outputs:
+            self.outputs.remove(self.completed_pin)
+
+        new_pin = Pin(f"{self.pin_prefix}{idx}", PinType.EXEC)
+        self.add_output(new_pin)
+        self.dynamic_outputs.append(new_pin)
+
+        self.add_output(self.completed_pin)
+        self._build_cached_surface()
+
+    def execute(self, triggered_pin: Optional[Pin] = None):
+        gens = []
+        for out_pin in self.dynamic_outputs:
+            for conn in out_pin.connected_pins:
+                if conn.node:
+                    gens.append(conn.node.execute(conn))
+
+        active_gens = []
+        for g in gens:
+            try:
+                next(g)
+                active_gens.append(g)
+            except StopIteration:
+                yield from self.trigger_out_pin("Completed")
+                return
+
+        while active_gens:
+            dt = yield
+            still_active = []
+            for g in active_gens:
+                try:
+                    g.send(dt)
+                    still_active.append(g)
+                except StopIteration:
+                    yield from self.trigger_out_pin("Completed")
+                    return
+            active_gens = still_active
+
+        # If we had empty branches or none connected, complete immediately.
+        if not gens:
+            yield from self.trigger_out_pin("Completed")
+
+
+class ParallelNode(DynamicExecNode):
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color, pin_prefix="Branch ")
+        self.add_input(Pin("Exec Left", PinType.EXEC))
+        self.completed_pin = Pin("Completed", PinType.EXEC)
+        self.add_output(self.completed_pin)
+        self.add_exec_pin()
+        self.add_exec_pin()
+
+    def add_exec_pin(self) -> None:
+        idx = len(self.dynamic_outputs)
+        if self.completed_pin in self.outputs:
+            self.outputs.remove(self.completed_pin)
+
+        new_pin = Pin(f"{self.pin_prefix}{idx}", PinType.EXEC)
+        self.add_output(new_pin)
+        self.dynamic_outputs.append(new_pin)
+
+        self.add_output(self.completed_pin)
+        self._build_cached_surface()
+
+    def execute(self, triggered_pin: Optional[Pin] = None):
+        gens = []
+        for out_pin in self.dynamic_outputs:
+            for conn in out_pin.connected_pins:
+                if conn.node:
+                    gens.append(conn.node.execute(conn))
+
+        active_gens = []
+        for g in gens:
+            try:
+                next(g)
+                active_gens.append(g)
+            except StopIteration:
+                # One branch finished instantly, but we wait for all to complete.
+                pass
+
+        while active_gens:
+            dt = yield
+            still_active = []
+            for g in active_gens:
+                try:
+                    g.send(dt)
+                    still_active.append(g)
+                except StopIteration:
+                    pass
+            active_gens = still_active
+
+        yield from self.trigger_out_pin("Completed")
 
 
 class DelayNode(GraphNode):
@@ -1892,6 +2085,8 @@ def main():
     node_panel.register_node(BoolInputNode, "Bool Condition", (100, 100, 100))
     node_panel.register_node(ForLoopNode, "For Loop", (80, 120, 160))
     node_panel.register_node(SequenceNode, "Sequence", (100, 150, 100))
+    node_panel.register_node(RaceNode, "Race (Wait for One)", (100, 150, 200))
+    node_panel.register_node(ParallelNode, "Parallel (Wait for All)", (100, 150, 200))
 
     begin_play_node = GraphNode(300, 100, "Event BeginPlay", (200, 50, 50))
     begin_play_exec_right_pin = Pin("Exec Right", PinType.EXEC)
@@ -1934,6 +2129,11 @@ def main():
 
         last_mouse_pos = current_mouse_pos
         world_mouse = screen_to_world(pygame.Vector2(current_mouse_pos))
+
+        # Check and trigger event root nodes automatically.
+        for node in graph:
+            if node.poll_event():
+                vm_engine.start_chain(node)
 
         vm_engine.tick(dt)
 
@@ -2095,6 +2295,17 @@ def main():
                             )
                             new_pin.on_clicked = on_pin_clicked
                             new_node.add_output(new_pin)
+
+                        if isinstance(new_node, DynamicExecNode):
+                            new_node.dynamic_outputs = []
+                            for out_pin in new_node.outputs:
+                                if out_pin.name.startswith(new_node.pin_prefix):
+                                    new_node.dynamic_outputs.append(out_pin)
+
+                        if isinstance(new_node, BranchNode):
+                            for out_pin in new_node.outputs:
+                                if out_pin.name == "False":
+                                    new_node.false_pin = out_pin
 
                         new_node._build_cached_surface()
                         graph.append(new_node)
