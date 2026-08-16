@@ -1631,6 +1631,82 @@ class InputState:
         cls.current_mods = pygame.key.get_mods()
 
 
+class BaseKeyEventNode(GraphNode):
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color)
+        self.add_input(
+            Pin("Key", PinType.STRING, ui_component=TextBoxComponent("space", str))
+        )
+        self.add_input(
+            Pin("Ctrl", PinType.BOOL, ui_component=BoolToggleComponent(False))
+        )
+        self.add_input(
+            Pin("Shift", PinType.BOOL, ui_component=BoolToggleComponent(False))
+        )
+        self.add_input(
+            Pin("Alt", PinType.BOOL, ui_component=BoolToggleComponent(False))
+        )
+        self.add_output(Pin("Pressed", PinType.EXEC))
+        self._build_cached_surface()
+
+    def get_key_state(self):
+        key_name = self.get_input_value("Key")
+        req_ctrl = self.get_input_value("Ctrl")
+        req_shift = self.get_input_value("Shift")
+        req_alt = self.get_input_value("Alt")
+
+        if InputState.current_keys is None:
+            return False, False, False
+
+        try:
+            k_code = pygame.key.key_code(str(key_name).strip().lower())
+        except (ValueError, NotImplementedError):
+            return False, False, False
+
+        mods = InputState.current_mods
+        if req_ctrl and not (mods & pygame.KMOD_CTRL):
+            return False, False, False
+        if req_shift and not (mods & pygame.KMOD_SHIFT):
+            return False, False, False
+        if req_alt and not (mods & pygame.KMOD_ALT):
+            return False, False, False
+
+        is_down = bool(InputState.current_keys[k_code])
+        was_down = (
+            bool(InputState.previous_keys[k_code])
+            if InputState.previous_keys
+            else False
+        )
+
+        return True, is_down, was_down
+
+    def poll_event(self) -> bool:
+        return self.check_event()
+
+    def check_event(self) -> bool:
+        return False
+
+    def execute(self, triggered_pin: Optional[Pin] = None):
+        yield from self.trigger_out_pin(self.outputs[0].name)
+
+
+class EventKeyPressedNode(BaseKeyEventNode):
+    def check_event(self) -> bool:
+        valid, is_down, was_down = self.get_key_state()
+        return valid and is_down and not was_down
+
+
+class EventKeyReleasedNode(BaseKeyEventNode):
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color)
+        self.outputs[0].name = "Released"
+        self._build_cached_surface()
+
+    def check_event(self) -> bool:
+        valid, is_down, was_down = self.get_key_state()
+        return valid and not is_down and was_down
+
+
 class BaseKeyboardNode(GraphNode):
     def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
         super().__init__(x, y, title, header_color)
@@ -1773,6 +1849,8 @@ def main():
 
     node_panel = NodePanel(240)
 
+    node_panel.register_node(EventKeyPressedNode, "Event Key Pressed", (200, 50, 50))
+    node_panel.register_node(EventKeyReleasedNode, "Event Key Released", (200, 50, 50))
     node_panel.register_node(KeyPressedNode, "Key Pressed", (180, 100, 100))
     node_panel.register_node(
         KeyPressedJustNowNode, "Key Pressed Just Now", (180, 80, 80)
