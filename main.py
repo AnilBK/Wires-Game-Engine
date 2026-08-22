@@ -2021,6 +2021,15 @@ class EventTickNode(GraphNode):
         return super().evaluate(pin_name)
 
 
+class EventBeginPlayNode(GraphNode):
+    """Fires exactly once when the Play button is pressed or the game starts."""
+
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color)
+        self.add_output(Pin("Exec Right", PinType.EXEC))
+        self._build_cached_surface()
+
+
 class BaseKeyboardNode(GraphNode):
     def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
         super().__init__(x, y, title, header_color)
@@ -2165,14 +2174,18 @@ def main():
 
     # Events
     node_panel.register_node(
-        EventKeyPressedNode, "Event Key Pressed", (200, 50, 50), "Events"
-    )
-    node_panel.register_node(
-        EventKeyReleasedNode, "Event Key Released", (200, 50, 50), "Events"
+        EventBeginPlayNode, "Event BeginPlay", (200, 50, 50), "Events"
     )
 
     node_panel.register_node(
         EventTickNode, "Event Tick (Update)", (200, 50, 50), "Events"
+    )
+
+    node_panel.register_node(
+        EventKeyPressedNode, "Event Key Pressed", (200, 50, 50), "Events"
+    )
+    node_panel.register_node(
+        EventKeyReleasedNode, "Event Key Released", (200, 50, 50), "Events"
     )
 
     # Sensing
@@ -2241,11 +2254,6 @@ def main():
         ParallelNode, "Parallel (Wait for All)", (100, 150, 200), "Control"
     )
 
-    begin_play_node = GraphNode(300, 100, "Event BeginPlay", (200, 50, 50))
-    begin_play_exec_right_pin = Pin("Exec Right", PinType.EXEC)
-    begin_play_node.add_output(begin_play_exec_right_pin)
-    begin_play_node._build_cached_surface()
-
     clicked_pin: Optional[Pin] = None
 
     def on_pin_clicked(pin: Pin) -> None:
@@ -2254,7 +2262,8 @@ def main():
         node_name = pin.node.title if pin.node else "Unknown Node"
         print(f"Pin clicked: {pin.name} on {node_name}")
 
-    begin_play_exec_right_pin.on_clicked = on_pin_clicked
+    begin_play_node = EventBeginPlayNode(300, 100, "Event BeginPlay", (200, 50, 50))
+    begin_play_node.outputs[0].on_clicked = on_pin_clicked
 
     graph: list[GraphNode] = [
         begin_play_node,
