@@ -1585,6 +1585,48 @@ class DelayNode(GraphNode):
         yield from self.trigger_out_pin("Exec Right")
 
 
+class CooldownNode(GraphNode):
+    """Only allows execution to pass if a specific duration has passed since the last execution."""
+
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color)
+        self.add_input(Pin("Exec Left", PinType.EXEC))
+        self.add_input(
+            Pin("Duration", PinType.FLOAT, ui_component=TextBoxComponent("1.0", float))
+        )
+
+        self.add_output(Pin("Ready", PinType.EXEC))
+        self.add_output(Pin("On Cooldown", PinType.EXEC))
+        self.add_output(Pin("Remaining", PinType.FLOAT))
+
+        self.last_fire_time = 0.0
+        self._build_cached_surface()
+
+    def execute(self, triggered_pin: Optional[Pin] = None):
+        duration_val = self.get_input_value("Duration")
+        duration = float(duration_val) if duration_val is not None else 1.0
+
+        current_time = time.time()
+
+        if current_time - self.last_fire_time >= duration:
+            # Cooldown is finished, we can fire again.
+            self.last_fire_time = current_time
+            yield from self.trigger_out_pin("Ready")
+        else:
+            # Still on cooldown.
+            yield from self.trigger_out_pin("On Cooldown")
+
+    def evaluate(self, pin_name: str) -> Any:
+        if pin_name == "Remaining":
+            duration_val = self.get_input_value("Duration")
+            duration = float(duration_val) if duration_val is not None else 1.0
+
+            elapsed = time.time() - self.last_fire_time
+            remaining = max(0.0, duration - elapsed)
+            return remaining
+        return super().evaluate(pin_name)
+
+
 class MoveToNode(GraphNode):
     def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
         super().__init__(x, y, title, header_color)
@@ -1957,6 +1999,28 @@ class EventKeyReleasedNode(BaseKeyEventNode):
         return valid and not is_down and was_down
 
 
+class EventTickNode(GraphNode):
+    """Fires every single frame (engine tick)."""
+
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color)
+        self.add_output(Pin("Exec Right", PinType.EXEC))
+        self.add_output(Pin("Delta Time", PinType.FLOAT))
+        self._build_cached_surface()
+
+    def poll_event(self) -> bool:
+        # Returns True so the engine creates an execution task for it every frame.
+        return True
+
+    def execute(self, triggered_pin: Optional[Pin] = None):
+        yield from self.trigger_out_pin("Exec Right")
+
+    def evaluate(self, pin_name: str) -> Any:
+        if pin_name == "Delta Time":
+            return TimeState.dt
+        return super().evaluate(pin_name)
+
+
 class BaseKeyboardNode(GraphNode):
     def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
         super().__init__(x, y, title, header_color)
@@ -2106,6 +2170,9 @@ def main():
     node_panel.register_node(
         EventKeyReleasedNode, "Event Key Released", (200, 50, 50), "Events"
     )
+
+    node_panel.register_node(
+        EventTickNode, "Event Tick (Update)", (200, 50, 50), "Events"
     )
 
     # Sensing
