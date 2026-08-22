@@ -1749,31 +1749,81 @@ class NodePanel:
         self.node_prototypes = []
         self.total_height = 0
 
-    def register_node(self, node_class, title, header_color):
+        # Setup Categories.
+        self.categories = ["Events", "Control", "Motion", "Looks", "Sensing", "Data"]
+        self.selected_category = self.categories[0]
+        self.tabs_rects = []
+
+        # Precompute Tab Rectangles (2 columns).
+        tab_w = self.width // 2 - 10
+        tab_h = 26
+        for i, category in enumerate(self.categories):
+            tx = 5 + (i % 2) * (tab_w + 5)
+            ty = 10 + (i // 2) * (tab_h + 10)
+            self.tabs_rects.append((pygame.Rect(tx, ty, tab_w, tab_h), category))
+
+    def get_selected_category_nodes(self):
+        return [
+            item
+            for item in self.node_prototypes
+            if item.get("category") == self.selected_category
+        ]
+
+    def register_node(self, node_class, title, header_color, category="Events"):
         node = node_class(0, 0, title, header_color)
         self.node_prototypes.append(
-            {"class": node_class, "title": title, "color": header_color, "node": node}
+            {
+                "class": node_class,
+                "title": title,
+                "color": header_color,
+                "node": node,
+                "category": category,
+            }
         )
         self.layout()
 
     def layout(self):
-        y = 20
-        for item in self.node_prototypes:
+        y = 130  # Leave space for tabs at the top.
+        for item in self.get_selected_category_nodes():
             node = item["node"]
             node.position = pygame.Vector2((self.width - node.width) // 2, y)
             node._build_cached_surface()
             y += node.bg_surface.get_height() + 20
         self.total_height = y
 
+    def handle_click(self, pos) -> bool:
+        """Returns True if a tab was clicked"""
+        for rect, category in self.tabs_rects:
+            if rect.collidepoint(pos):
+                self.selected_category = category
+                self.scroll_y = 0
+                self.layout()
+                return True
+        return False
+
     def draw(self, screen: pygame.Surface):
         panel_rect = pygame.Rect(0, 0, self.width, screen.get_height())
-
         old_clip = screen.get_clip()
         screen.set_clip(panel_rect)
 
         pygame.draw.rect(screen, (30, 30, 30), panel_rect)
 
-        for item in self.node_prototypes:
+        # Draw Tabs.
+        tab_color = (50, 50, 50)
+        selected_tab_color = (80, 80, 80)
+
+        for rect, category in self.tabs_rects:
+            color = (
+                selected_tab_color if category == self.selected_category else tab_color
+            )
+            pygame.draw.rect(screen, color, rect, border_radius=4)
+            pygame.draw.rect(screen, (100, 100, 100), rect, width=1, border_radius=4)
+
+            text = FONT.render(category, True, (255, 255, 255))
+            screen.blit(text, text.get_rect(center=rect.center))
+
+        # Draw Nodes for selected category.
+        for item in self.get_selected_category_nodes():
             node = item["node"]
             y_pos = node.position.y - self.scroll_y
             if -300 < y_pos < screen.get_height():
@@ -1786,7 +1836,6 @@ class NodePanel:
             (self.width - 1, screen.get_height()),
             2,
         )
-
         screen.set_clip(old_clip)
 
 
@@ -2050,51 +2099,80 @@ def main():
 
     node_panel = NodePanel(240)
 
-    node_panel.register_node(EventKeyPressedNode, "Event Key Pressed", (200, 50, 50))
-    node_panel.register_node(EventKeyReleasedNode, "Event Key Released", (200, 50, 50))
-    node_panel.register_node(KeyPressedNode, "Key Pressed", (180, 100, 100))
+    # Events
     node_panel.register_node(
-        KeyPressedJustNowNode, "Key Pressed Just Now", (180, 80, 80)
-    )
-    node_panel.register_node(KeyReleasedNode, "Key Released", (180, 100, 100))
-    node_panel.register_node(
-        KeyReleasedJustNowNode, "Key Released Just Now", (180, 80, 80)
-    )
-    node_panel.register_node(MousePositionNode, "Mouse Position", (180, 100, 100))
-
-    node_panel.register_node(PrintNode, "Print Hello World", (50, 200, 50))
-    node_panel.register_node(StringConstantNode, "String Constant", (50, 50, 200))
-    node_panel.register_node(TextInputNode, "Text Input", (150, 50, 150))
-
-    node_panel.register_node(SetPositionNode, "Set Cat Position", (200, 200, 50))
-
-    node_panel.register_node(InstantiateNode, "Instantiate Object", (250, 100, 50))
-    node_panel.register_node(
-        SetGameObjectPositionNode, "Set Obj Position", (200, 150, 50)
+        EventKeyPressedNode, "Event Key Pressed", (200, 50, 50), "Events"
     )
     node_panel.register_node(
-        GetGameObjectPositionNode, "Get Obj Position", (150, 150, 50)
+        EventKeyReleasedNode, "Event Key Released", (200, 50, 50), "Events"
+    )
     )
 
-    node_panel.register_node(FloatInputNode, "Float Input", (150, 150, 150))
-    node_panel.register_node(IntInputNode, "Int Input", (140, 140, 140))
-    node_panel.register_node(MakeVector2Node, "Make Vector2 Node", (200, 50, 50))
-    node_panel.register_node(DelayNode, "Delay Node", (100, 100, 100))
-    node_panel.register_node(MoveToNode, "Move Cat", (120, 80, 180))
+    # Sensing
+    node_panel.register_node(KeyPressedNode, "Key Pressed", (180, 100, 100), "Sensing")
     node_panel.register_node(
-        ContinuousTranslateNode, "Continuous Translate", (120, 150, 180)
+        KeyPressedJustNowNode, "Key Pressed Just Now", (180, 80, 80), "Sensing"
     )
-    node_panel.register_node(ChangeXByNode, "Change X By", (120, 80, 180))
-    node_panel.register_node(ChangeYByNode, "Change Y By", (120, 80, 180))
-    node_panel.register_node(DoForeverNode, "Do Forever", (110, 110, 110))
-    node_panel.register_node(DoOnceNode, "Do Once", (160, 80, 80))
-    node_panel.register_node(FlipFlopNode, "Flip Flop Node", (160, 100, 50))
-    node_panel.register_node(BranchNode, "Branch (If/Else)", (160, 100, 50))
-    node_panel.register_node(BoolInputNode, "Bool Condition", (100, 100, 100))
-    node_panel.register_node(ForLoopNode, "For Loop", (80, 120, 160))
-    node_panel.register_node(SequenceNode, "Sequence", (100, 150, 100))
-    node_panel.register_node(RaceNode, "Race (Wait for One)", (100, 150, 200))
-    node_panel.register_node(ParallelNode, "Parallel (Wait for All)", (100, 150, 200))
+    node_panel.register_node(
+        KeyReleasedNode, "Key Released", (180, 100, 100), "Sensing"
+    )
+    node_panel.register_node(
+        KeyReleasedJustNowNode, "Key Released Just Now", (180, 80, 80), "Sensing"
+    )
+    node_panel.register_node(
+        MousePositionNode, "Mouse Position", (180, 100, 100), "Sensing"
+    )
+
+    # Looks
+    node_panel.register_node(PrintNode, "Print Hello World", (50, 200, 50), "Looks")
+    node_panel.register_node(
+        StringConstantNode, "String Constant", (50, 50, 200), "Looks"
+    )
+    node_panel.register_node(TextInputNode, "Text Input", (150, 50, 150), "Looks")
+
+    # Motion
+    node_panel.register_node(
+        SetPositionNode, "Set Cat Position", (200, 200, 50), "Motion"
+    )
+    node_panel.register_node(
+        InstantiateNode, "Instantiate Object", (250, 100, 50), "Motion"
+    )
+    node_panel.register_node(
+        SetGameObjectPositionNode, "Set Obj Position", (200, 150, 50), "Motion"
+    )
+    node_panel.register_node(
+        GetGameObjectPositionNode, "Get Obj Position", (150, 150, 50), "Motion"
+    )
+    node_panel.register_node(MoveToNode, "Move Cat", (120, 80, 180), "Motion")
+    node_panel.register_node(
+        ContinuousTranslateNode, "Continuous Translate", (120, 150, 180), "Motion"
+    )
+    node_panel.register_node(ChangeXByNode, "Change X By", (120, 80, 180), "Motion")
+    node_panel.register_node(ChangeYByNode, "Change Y By", (120, 80, 180), "Motion")
+
+    # Data / Variables
+    node_panel.register_node(FloatInputNode, "Float Input", (150, 150, 150), "Data")
+    node_panel.register_node(IntInputNode, "Int Input", (140, 140, 140), "Data")
+    node_panel.register_node(
+        MakeVector2Node, "Make Vector2 Node", (200, 50, 50), "Data"
+    )
+    node_panel.register_node(BoolInputNode, "Bool Condition", (100, 100, 100), "Data")
+
+    # Control
+    node_panel.register_node(DelayNode, "Delay Node", (100, 100, 100), "Control")
+    node_panel.register_node(CooldownNode, "Cooldown Node", (160, 100, 150), "Control")
+    node_panel.register_node(DoForeverNode, "Do Forever", (110, 110, 110), "Control")
+    node_panel.register_node(DoOnceNode, "Do Once", (160, 80, 80), "Control")
+    node_panel.register_node(FlipFlopNode, "Flip Flop Node", (160, 100, 50), "Control")
+    node_panel.register_node(BranchNode, "Branch (If/Else)", (160, 100, 50), "Control")
+    node_panel.register_node(ForLoopNode, "For Loop", (80, 120, 160), "Control")
+    node_panel.register_node(SequenceNode, "Sequence", (100, 150, 100), "Control")
+    node_panel.register_node(
+        RaceNode, "Race (Wait for One)", (100, 150, 200), "Control"
+    )
+    node_panel.register_node(
+        ParallelNode, "Parallel (Wait for All)", (100, 150, 200), "Control"
+    )
 
     begin_play_node = GraphNode(300, 100, "Event BeginPlay", (200, 50, 50))
     begin_play_exec_right_pin = Pin("Exec Right", PinType.EXEC)
@@ -2176,8 +2254,11 @@ def main():
                         continue
 
                     if current_mouse_pos[0] < node_panel.width:
+                        if node_panel.handle_click(current_mouse_pos):
+                            continue
+
                         # Handle panel click - Spawning new node
-                        for item in node_panel.node_prototypes:
+                        for item in node_panel.get_selected_category_nodes():
                             node = item["node"]
                             node_rect = pygame.Rect(
                                 node.position.x,
