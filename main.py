@@ -35,6 +35,13 @@ GRID_ROW_COLOR = (255, 255, 255, 20)
 OUTER_BORDER_COLOR = (0, 0, 0, 255)
 INNER_BORDER_COLOR = (255, 255, 255, 30)
 
+
+class PlayState(Enum):
+    STOPPED = 0
+    PLAYING = 1
+    PAUSED = 2
+
+
 pygame.init()
 
 screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
@@ -983,6 +990,7 @@ class DynamicExecNode(GraphNode):
     """
     Base class for nodes like Sequence, Branch, Race, and Parallel that can dynamically add an unlimited number of pins.
     """
+
     def __init__(
         self,
         x: float,
@@ -1358,7 +1366,7 @@ class BranchNode(DynamicExecNode):
         self.add_input(Pin("Exec Left", PinType.EXEC))
         self.false_pin = Pin("False", PinType.EXEC)
         self.add_exec_pin()
-        
+
     def add_exec_pin(self) -> None:
         idx = len(self.dynamic_outputs)
 
@@ -2113,6 +2121,8 @@ def main():
 
     vm_engine = ExecutionEngine()
 
+    play_state = PlayState.STOPPED
+
     clock = pygame.time.Clock()
     running = True
     while running:
@@ -2130,12 +2140,13 @@ def main():
         last_mouse_pos = current_mouse_pos
         world_mouse = screen_to_world(pygame.Vector2(current_mouse_pos))
 
-        # Check and trigger event root nodes automatically.
-        for node in graph:
-            if node.poll_event():
-                vm_engine.start_chain(node)
+        if play_state == PlayState.PLAYING:
+            # Check and trigger event root nodes automatically.
+            for node in graph:
+                if node.poll_event():
+                    vm_engine.start_chain(node)
 
-        vm_engine.tick(dt)
+            vm_engine.tick(dt)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -2144,6 +2155,26 @@ def main():
                 if event.button == 2:  # Middle mouse button
                     panning = True
                 elif event.button == 1:  # Left mouse button
+                    center_x = WIDTH // 2
+                    play_btn_rect = pygame.Rect(center_x - 45, 10, 40, 40)
+                    stop_btn_rect = pygame.Rect(center_x + 5, 10, 40, 40)
+
+                    if play_btn_rect.collidepoint(current_mouse_pos):
+                        if play_state == PlayState.STOPPED:
+                            play_state = PlayState.PLAYING
+                            vm_engine.stop_all()
+                            vm_engine.start_chain(begin_play_node)
+                        elif play_state == PlayState.PLAYING:
+                            play_state = PlayState.PAUSED
+                        elif play_state == PlayState.PAUSED:
+                            play_state = PlayState.PLAYING
+                        continue
+
+                    if stop_btn_rect.collidepoint(current_mouse_pos):
+                        play_state = PlayState.STOPPED
+                        vm_engine.stop_all()
+                        continue
+
                     if current_mouse_pos[0] < node_panel.width:
                         # Handle panel click - Spawning new node
                         for item in node_panel.node_prototypes:
@@ -2381,6 +2412,48 @@ def main():
 
             wire_color = PinColorMap[clicked_pin.pin_type]
             draw_bezier(screen, start_pos, end_pos, wire_color, width=3)
+
+        # Play & Stop Button UI.
+        center_x = WIDTH // 2
+        play_btn_rect = pygame.Rect(center_x - 45, 10, 40, 40)
+        stop_btn_rect = pygame.Rect(center_x + 5, 10, 40, 40)
+
+        pygame.draw.rect(screen, (50, 50, 50), play_btn_rect, border_radius=8)
+        pygame.draw.rect(
+            screen,
+            (
+                (100, 100, 100)
+                if play_btn_rect.collidepoint(current_mouse_pos)
+                else (80, 80, 80)
+            ),
+            play_btn_rect,
+            width=2,
+            border_radius=8,
+        )
+        if play_state in (PlayState.STOPPED, PlayState.PAUSED):
+            pygame.draw.polygon(
+                screen,
+                (100, 255, 100),
+                [(center_x - 30, 20), (center_x - 30, 40), (center_x - 15, 30)],
+            )
+        else:
+            pygame.draw.rect(screen, (255, 255, 100), (center_x - 33, 20, 8, 20))
+            pygame.draw.rect(screen, (255, 255, 100), (center_x - 21, 20, 8, 20))
+
+        # Stop Button.
+        pygame.draw.rect(screen, (50, 50, 50), stop_btn_rect, border_radius=8)
+        pygame.draw.rect(
+            screen,
+            (
+                (100, 100, 100)
+                if stop_btn_rect.collidepoint(current_mouse_pos)
+                else (80, 80, 80)
+            ),
+            stop_btn_rect,
+            width=2,
+            border_radius=8,
+        )
+        pygame.draw.rect(screen, (255, 100, 100), (center_x + 15, 20, 20, 20))
 
         clear_expired_logs()
 
