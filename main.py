@@ -1982,6 +1982,17 @@ class BaseKeyEventNode(GraphNode):
         yield from self.trigger_out_pin(self.outputs[0].name)
 
 
+class EventKeyHoldNode(BaseKeyEventNode):
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color)
+        self.outputs[0].name = "Hold"
+        self._build_cached_surface()
+
+    def check_event(self) -> bool:
+        valid, is_down, was_down = self.get_key_state()
+        return valid and is_down
+
+
 class EventKeyPressedNode(BaseKeyEventNode):
     def check_event(self) -> bool:
         valid, is_down, was_down = self.get_key_state()
@@ -2179,6 +2190,10 @@ def main():
 
     node_panel.register_node(
         EventTickNode, "Event Tick (Update)", (200, 50, 50), "Events"
+    )
+
+    node_panel.register_node(
+        EventKeyHoldNode, "Event Key Hold", (200, 50, 50), "Events"
     )
 
     node_panel.register_node(
