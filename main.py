@@ -2121,7 +2121,7 @@ class MousePositionNode(GraphNode):
         return None
 
 
-class ContinuousTranslateNode(GraphNode):
+class TranslateAtSpeedNode(GraphNode):
     def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
         super().__init__(x, y, title, header_color)
         self.add_input(Pin("Exec Left", PinType.EXEC))
@@ -2225,7 +2225,7 @@ def main():
     )
     node_panel.register_node(MoveToNode, "Move Cat", (120, 80, 180), "Motion")
     node_panel.register_node(
-        ContinuousTranslateNode, "Continuous Translate", (120, 150, 180), "Motion"
+        TranslateAtSpeedNode, "Translate At Speed", (120, 150, 180), "Motion"
     )
     node_panel.register_node(ChangeXByNode, "Change X By", (120, 80, 180), "Motion")
     node_panel.register_node(ChangeYByNode, "Change Y By", (120, 80, 180), "Motion")
