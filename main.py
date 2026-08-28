@@ -75,12 +75,24 @@ scene.RegisterNode(
         texture="cat.png",
     )
 )
+scene.RegisterNode(
+    Sprite(
+        identifier="banana",
+        texture="bananas1.png",
+    )
+)
+scene.RegisterNode(
+    Sprite(
+        identifier="monkey",
+        texture="monkey1.png",
+    )
+)
 
 cat1 = scene.Instantiate("cat")
 cat1.SetPosition(pygame.Vector2(100, 100))
 
-# cat2 = scene.Instantiate("cat")
-# cat2.SetPosition(pygame.Vector2(300, 150))
+banana = scene.Instantiate("banana")
+banana.SetPosition(pygame.Vector2(300, 100))
 
 monkey = scene.Instantiate("monkey")
 monkey.SetPosition(pygame.Vector2(500, 100))
@@ -2004,6 +2016,52 @@ class NodePanel:
         screen.set_clip(old_clip)
 
 
+class InspectorPanel:
+    def __init__(self, width: int):
+        self.width = width
+
+    def draw(self, screen: pygame.Surface):
+        panel_start_x: int = screen.get_width() - self.width
+        panel_start_y: int = 0
+        panel_rect = pygame.Rect(
+            panel_start_x, panel_start_y, self.width, screen.get_height()
+        )
+
+        old_clip = screen.get_clip()
+        screen.set_clip(panel_rect)
+
+        pygame.draw.rect(screen, (30, 30, 30), panel_rect)
+
+        text = LARGE_FONT.render("Sprites", True, (255, 255, 255))
+        text_rect = panel_rect
+        text_rect.height = 25
+        screen.blit(text, text.get_rect(center=text_rect.center))
+
+        PADDING = 10
+
+        tx_local = PADDING
+        ty_local = 30
+
+        for game_object in scene.nodes:
+            node_name = game_object.identifier
+
+            render_x = tx_local + panel_start_x
+            render_y = ty_local + panel_start_y
+
+            rect = pygame.Rect(
+                render_x, render_y, screen.get_width() - render_x - PADDING, 25
+            )
+            pygame.draw.rect(screen, (220, 220, 220), rect, border_radius=4)
+            pygame.draw.rect(screen, (100, 100, 100), rect, width=1, border_radius=4)
+
+            text = FONT.render(node_name, True, (255, 0, 0))
+            screen.blit(text, text.get_rect(center=rect.center))
+
+            ty_local += 30
+
+        screen.set_clip(old_clip)
+
+
 class ExecutionEngine:
     def __init__(self):
         self.active_tasks: List[types.GeneratorType] = []
@@ -2324,6 +2382,8 @@ def main():
 
     node_panel = NodePanel(240)
 
+    inspector_panel = InspectorPanel(240)
+
     # Events
     node_panel.register_node(
         EventBeginPlayNode, "Event BeginPlay", (200, 50, 50), "Events"
@@ -2395,9 +2455,7 @@ def main():
     # Data / Variables
     node_panel.register_node(FloatInputNode, "Float Input", (150, 150, 150), "Data")
     node_panel.register_node(IntInputNode, "Int Input", (140, 140, 140), "Data")
-    node_panel.register_node(
-        MakeVector2Node, "Make Vector2", (200, 50, 50), "Data"
-    )
+    node_panel.register_node(MakeVector2Node, "Make Vector2", (200, 50, 50), "Data")
     node_panel.register_node(BreakVector2Node, "Break Vector2", (200, 50, 50), "Data")
     node_panel.register_node(BoolInputNode, "Bool Condition", (100, 100, 100), "Data")
     node_panel.register_node(SetVariableNode, "Set Variable", (140, 70, 70), "Data")
@@ -2789,6 +2847,7 @@ def main():
             screen.blit(text_surf, log_pos + pygame.Vector2(0, i * 20))
 
         node_panel.draw(screen)
+        inspector_panel.draw(screen)
 
         pygame.display.flip()
 
