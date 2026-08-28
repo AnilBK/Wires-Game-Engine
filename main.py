@@ -2170,6 +2170,24 @@ class MousePositionNode(GraphNode):
         return None
 
 
+class DistanceBetweenObjectsNode(GraphNode):
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color)
+        self.add_input(Pin("Object A", PinType.GAMEOBJECT))
+        self.add_input(Pin("Object B", PinType.GAMEOBJECT))
+        self.add_output(Pin("Distance", PinType.FLOAT))
+        self._build_cached_surface()
+
+    def evaluate(self, pin_name: str) -> Any:
+        objA = self.get_input_value("Object A")
+        objB = self.get_input_value("Object B")
+
+        if objA and objB:
+            return objA.GetPosition().distance_to(objB.GetPosition())
+
+        return 9999999.0
+
+
 class TranslateAtSpeedNode(GraphNode):
     def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
         super().__init__(x, y, title, header_color)
@@ -2254,6 +2272,12 @@ def main():
     )
     node_panel.register_node(
         MousePositionNode, "Mouse Position", (180, 100, 100), "Sensing"
+    )
+    node_panel.register_node(
+        DistanceBetweenObjectsNode,
+        "Distance Between Objects",
+        (180, 100, 100),
+        "Sensing",
     )
 
     # Looks
