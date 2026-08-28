@@ -2,6 +2,7 @@ from collections import deque
 from dataclasses import dataclass
 from enum import Enum
 
+import random
 import time
 from typing import Any, Callable, Dict, List, Optional
 import types
@@ -85,6 +86,9 @@ cat1.SetPosition(pygame.Vector2(100, 100))
 # cat3.SetPosition(pygame.Vector2(500, 250))
 
 cat = cat1
+
+
+GLOBAL_VARIABLES = {}
 
 
 @dataclass
@@ -1228,6 +1232,40 @@ class BoolInputNode(GraphNode):
         return self.ui_comp.get_value()
 
 
+class SetVariableNode(GraphNode):
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color)
+        self.add_input(Pin("Exec Left", PinType.EXEC))
+        self.add_input(
+            Pin("Name", PinType.STRING, ui_component=TextBoxComponent("Variable", str))
+        )
+        self.add_input(Pin("Value", PinType.WILDCARD))
+        self.add_output(Pin("Exec Right", PinType.EXEC))
+        self._build_cached_surface()
+
+    def execute(self, triggered_pin: Optional[Pin] = None):
+        var_name = self.get_input_value("Name")
+        var_value = self.get_input_value("Value")
+        if var_name:
+            GLOBAL_VARIABLES[str(var_name)] = var_value
+            add_console_log(f"{var_name} set to {var_value}")
+        yield from self.trigger_out_pin("Exec Right")
+
+
+class GetVariableNode(GraphNode):
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color)
+        self.add_input(
+            Pin("Name", PinType.STRING, ui_component=TextBoxComponent("Variable", str))
+        )
+        self.add_output(Pin("Value", PinType.WILDCARD))
+        self._build_cached_surface()
+
+    def evaluate(self, pin_name: str) -> Any:
+        var_name = self.get_input_value("Name")
+        return GLOBAL_VARIABLES.get(str(var_name), 0)
+
+
 class InstantiateNode(GraphNode):
     def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
         super().__init__(x, y, title, header_color)
@@ -2252,6 +2290,9 @@ def main():
         MakeVector2Node, "Make Vector2 Node", (200, 50, 50), "Data"
     )
     node_panel.register_node(BoolInputNode, "Bool Condition", (100, 100, 100), "Data")
+    node_panel.register_node(SetVariableNode, "Set Variable", (140, 70, 70), "Data")
+    node_panel.register_node(GetVariableNode, "Get Variable", (140, 70, 70), "Data")
+
 
     # Control
     node_panel.register_node(DelayNode, "Delay Node", (100, 100, 100), "Control")
