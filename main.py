@@ -1065,6 +1065,26 @@ class MakeVector2Node(GraphNode):
         return pygame.Vector2(x, y)
 
 
+class BreakVector2Node(GraphNode):
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color)
+        self.add_input(Pin("Vector2", PinType.VECTOR2))
+        self.add_output(Pin("X", PinType.FLOAT))
+        self.add_output(Pin("Y", PinType.FLOAT))
+        self._build_cached_surface()
+
+    def evaluate(self, pin_name: str) -> Any:
+        vec = self.get_input_value("Vector2")
+        if not isinstance(vec, pygame.Vector2):
+            vec = pygame.Vector2(0, 0)
+
+        if pin_name == "X":
+            return vec.x
+
+        if pin_name == "Y":
+            return vec.y
+
+
 class StringConstantNode(GraphNode):
     def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
         super().__init__(x, y, title, header_color)
@@ -2311,8 +2331,9 @@ def main():
     node_panel.register_node(FloatInputNode, "Float Input", (150, 150, 150), "Data")
     node_panel.register_node(IntInputNode, "Int Input", (140, 140, 140), "Data")
     node_panel.register_node(
-        MakeVector2Node, "Make Vector2 Node", (200, 50, 50), "Data"
+        MakeVector2Node, "Make Vector2", (200, 50, 50), "Data"
     )
+    node_panel.register_node(BreakVector2Node, "Break Vector2", (200, 50, 50), "Data")
     node_panel.register_node(BoolInputNode, "Bool Condition", (100, 100, 100), "Data")
     node_panel.register_node(SetVariableNode, "Set Variable", (140, 70, 70), "Data")
     node_panel.register_node(GetVariableNode, "Get Variable", (140, 70, 70), "Data")
