@@ -1043,17 +1043,17 @@ class MakeVector2Node(GraphNode):
     def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
         super().__init__(x, y, title, header_color)
         self.add_input(
-            Pin("input_x", PinType.FLOAT, ui_component=TextBoxComponent("0.0", float))
+            Pin("X", PinType.FLOAT, ui_component=TextBoxComponent("0.0", float))
         )
         self.add_input(
-            Pin("input_y", PinType.FLOAT, ui_component=TextBoxComponent("0.0", float))
+            Pin("Y", PinType.FLOAT, ui_component=TextBoxComponent("0.0", float))
         )
-        self.add_output(Pin("output_vec", PinType.VECTOR2))
+        self.add_output(Pin("Vector2", PinType.VECTOR2))
         self._build_cached_surface()
 
     def evaluate(self, pin_name: str):
-        x_val = self.get_input_value("input_x")
-        y_val = self.get_input_value("input_y")
+        x_val = self.get_input_value("X")
+        y_val = self.get_input_value("Y")
         try:
             x = float(x_val) if x_val is not None and x_val != "" else 0.0
         except ValueError:
