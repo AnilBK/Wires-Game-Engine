@@ -1286,6 +1286,71 @@ class GetVariableNode(GraphNode):
         return GLOBAL_VARIABLES.get(str(var_name), 0)
 
 
+class FloatAddNode(GraphNode):
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color)
+        self.add_input(
+            Pin("A", PinType.FLOAT, ui_component=TextBoxComponent("0", float))
+        )
+        self.add_input(
+            Pin("B", PinType.FLOAT, ui_component=TextBoxComponent("1", float))
+        )
+        self.add_output(Pin("Result", PinType.FLOAT))
+        self._build_cached_surface()
+
+    def evaluate(self, pin_name: str) -> Any:
+        try:
+            a = float(self.get_input_value("A") or 0)
+            b = float(self.get_input_value("B") or 0)
+            return a + b
+        except (ValueError, TypeError):
+            return 0.0
+
+
+class FloatCompareNode(GraphNode):
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color)
+        self.add_input(Pin("A", PinType.FLOAT))
+        self.add_input(
+            Pin("B", PinType.FLOAT, ui_component=TextBoxComponent("1", float))
+        )
+        self.add_output(Pin("A > B", PinType.BOOL))
+        self.add_output(Pin("A < B", PinType.BOOL))
+        self._build_cached_surface()
+
+    def evaluate(self, pin_name: str) -> Any:
+        try:
+            a = float(self.get_input_value("A") or 0)
+            b = float(self.get_input_value("B") or 0)
+            if pin_name == "A > B":
+                return a > b
+            if pin_name == "A < B":
+                return a < b
+        except (ValueError, TypeError):
+            return False
+
+
+class RandomFloatNode(GraphNode):
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color)
+        self.add_input(
+            Pin("Min", PinType.FLOAT, ui_component=TextBoxComponent("0", float))
+        )
+        self.add_input(
+            Pin("Max", PinType.FLOAT, ui_component=TextBoxComponent("100", float))
+        )
+        self.add_output(Pin("Result", PinType.FLOAT))
+        self._build_cached_surface()
+
+    def evaluate(self, pin_name: str) -> Any:
+        try:
+            mn = float(self.get_input_value("Min") or 0)
+            mx = float(self.get_input_value("Max") or 0)
+            return random.uniform(mn, mx)
+        except (ValueError, TypeError):
+            return 0.0
+
+
 class InstantiateNode(GraphNode):
     def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
         super().__init__(x, y, title, header_color)
@@ -2338,6 +2403,9 @@ def main():
     node_panel.register_node(SetVariableNode, "Set Variable", (140, 70, 70), "Data")
     node_panel.register_node(GetVariableNode, "Get Variable", (140, 70, 70), "Data")
 
+    node_panel.register_node(FloatAddNode, "Float Add (+)", (70, 140, 70), "Data")
+    node_panel.register_node(FloatCompareNode, "Compare Floats", (70, 140, 70), "Data")
+    node_panel.register_node(RandomFloatNode, "Random Float", (70, 140, 70), "Data")
 
     # Control
     node_panel.register_node(DelayNode, "Delay Node", (100, 100, 100), "Control")
