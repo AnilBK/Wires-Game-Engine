@@ -82,8 +82,8 @@ cat1.SetPosition(pygame.Vector2(100, 100))
 # cat2 = scene.Instantiate("cat")
 # cat2.SetPosition(pygame.Vector2(300, 150))
 
-# cat3 = scene.Instantiate("cat")
-# cat3.SetPosition(pygame.Vector2(500, 250))
+monkey = scene.Instantiate("monkey")
+monkey.SetPosition(pygame.Vector2(500, 100))
 
 cat = cat1
 
