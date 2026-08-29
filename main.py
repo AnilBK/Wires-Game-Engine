@@ -11,7 +11,7 @@ import pygame
 import sys
 from pygame._sdl2.video import Window
 
-from game_object import Scene, Sprite
+from game_object import GameObject, Scene, Sprite
 
 BG_COLOR = (35, 35, 35)
 
@@ -642,6 +642,8 @@ class GraphNode:
 
         self.width = MIN_NODE_WIDTH
 
+        self.owner: Optional[GameObject] = None
+
         self.inputs: list[Pin] = []
         self.outputs: list[Pin] = []
 
@@ -1118,11 +1120,11 @@ class SetPositionNode(GraphNode):
 
     def execute(self, triggered_pin: Optional[Pin] = None):
         vector2_input = self.get_input_value("input_vec")
-        if vector2_input is not None:
-            global cat
-            cat.SetPosition(vector2_input)
-        else:
-            add_console_log("input_vec is empty.")
+        if self.owner is not None:
+            if vector2_input is not None:
+                self.owner.SetPosition(vector2_input)
+            else:
+                add_console_log("input_vec is empty.")
 
         yield from self.trigger_out_pin("Exec Right")
 
@@ -1777,6 +1779,10 @@ class MoveToNode(GraphNode):
         self._build_cached_surface()
 
     def execute(self, triggered_pin: Optional[Pin] = None):
+        if self.owner is None:
+            yield from self.trigger_out_pin("Exec Right")
+            return
+
         add_console_log(f"MoveToNode started: {self.title}")
         p1_val = self.get_input_value("From P1")
         p2_val = self.get_input_value("To P2")
@@ -1787,12 +1793,11 @@ class MoveToNode(GraphNode):
         seconds = float(sec_val) if sec_val is not None and sec_val != "" else 1.0
 
         elapsed = 0.0
-        global cat
         while elapsed < seconds:
             dt = yield
             elapsed += dt or 0.0
             t = min(elapsed / seconds, 1.0) if seconds > 0.0 else 1.0
-            cat.SetPosition(p1.lerp(p2, t))
+            self.owner.SetPosition(p1.lerp(p2, t))
 
         add_console_log(f"MoveToNode complete: {self.title}")
         yield from self.trigger_out_pin("Exec Right")
@@ -1820,6 +1825,10 @@ class ChangeXByNode(GraphNode):
         self._build_cached_surface()
 
     def execute(self, triggered_pin: Optional[Pin] = None):
+        if self.owner is None:
+            yield from self.trigger_out_pin("Exec Right")
+            return
+
         add_console_log(f"ChangeXByNode started: {self.title}")
         change_val = self.get_input_value("Change X By")
         sec_val = self.get_input_value("In Seconds")
@@ -1827,8 +1836,7 @@ class ChangeXByNode(GraphNode):
         delta_x = float(change_val) if change_val is not None else 100.0
         seconds = float(sec_val) if sec_val is not None else 1.0
 
-        global cat
-        start_pos = cat.GetPosition().copy()
+        start_pos = self.owner.GetPosition().copy()
         start_x = start_pos.x
         target_x = start_x + delta_x
 
@@ -1838,9 +1846,9 @@ class ChangeXByNode(GraphNode):
             elapsed += dt or 0.0
             t = min(elapsed / seconds, 1.0) if seconds > 0 else 1.0
             new_x = start_x + (target_x - start_x) * t
-            cat.SetPosition(pygame.Vector2(new_x, start_pos.y))
+            self.owner.SetPosition(pygame.Vector2(new_x, start_pos.y))
 
-        cat.SetPosition(pygame.Vector2(target_x, start_pos.y))
+        self.owner.SetPosition(pygame.Vector2(target_x, start_pos.y))
         add_console_log(f"ChangeXByNode complete: {self.title}")
         yield from self.trigger_out_pin("Exec Right")
 
@@ -1867,6 +1875,10 @@ class ChangeYByNode(GraphNode):
         self._build_cached_surface()
 
     def execute(self, triggered_pin: Optional[Pin] = None):
+        if self.owner is None:
+            yield from self.trigger_out_pin("Exec Right")
+            return
+
         add_console_log(f"ChangeYByNode started: {self.title}")
         change_val = self.get_input_value("Change Y By")
         sec_val = self.get_input_value("In Seconds")
@@ -1874,8 +1886,7 @@ class ChangeYByNode(GraphNode):
         delta_y = float(change_val) if change_val is not None else 100.0
         seconds = float(sec_val) if sec_val is not None else 1.0
 
-        global cat
-        start_pos = cat.GetPosition().copy()
+        start_pos = self.owner.GetPosition().copy()
         start_y = start_pos.y
         target_y = start_y + delta_y
 
@@ -1885,9 +1896,9 @@ class ChangeYByNode(GraphNode):
             elapsed += dt or 0.0
             t = min(elapsed / seconds, 1.0) if seconds > 0 else 1.0
             new_y = start_y + (target_y - start_y) * t
-            cat.SetPosition(pygame.Vector2(start_pos.x, new_y))
+            self.owner.SetPosition(pygame.Vector2(start_pos.x, new_y))
 
-        cat.SetPosition(pygame.Vector2(start_pos.x, target_y))
+        self.owner.SetPosition(pygame.Vector2(start_pos.x, target_y))
         add_console_log(f"ChangeYByNode complete: {self.title}")
         yield from self.trigger_out_pin("Exec Right")
 
@@ -2353,20 +2364,18 @@ class TranslateAtSpeedNode(GraphNode):
         self._build_cached_surface()
 
     def execute(self, triggered_pin: Optional[Pin] = None):
-        speed_x = self.get_input_value("Speed X (px/s)")
-        speed_y = self.get_input_value("Speed Y (px/s)")
+        if self.owner is not None:
+            speed_x = self.get_input_value("Speed X (px/s)")
+            speed_y = self.get_input_value("Speed Y (px/s)")
 
-        sx = float(speed_x) if speed_x is not None else 0.0
-        sy = float(speed_y) if speed_y is not None else 0.0
+            sx = float(speed_x) if speed_x is not None else 0.0
+            sy = float(speed_y) if speed_y is not None else 0.0
 
-        global cat
-        current_pos = cat.GetPosition()
+            current_pos = self.owner.GetPosition()
+            new_x = current_pos.x + (sx * TimeState.dt)
+            new_y = current_pos.y + (sy * TimeState.dt)
 
-        new_x = current_pos.x + (sx * TimeState.dt)
-        new_y = current_pos.y + (sy * TimeState.dt)
-
-        cat.SetPosition(pygame.Vector2(new_x, new_y))
-
+            self.owner.SetPosition(pygame.Vector2(new_x, new_y))
         yield from self.trigger_out_pin("Exec Right")
 
 
@@ -2433,9 +2442,7 @@ def main():
     node_panel.register_node(TextInputNode, "Text Input", (150, 50, 150), "Looks")
 
     # Motion
-    node_panel.register_node(
-        SetPositionNode, "Set Cat Position", (200, 200, 50), "Motion"
-    )
+    node_panel.register_node(SetPositionNode, "Set Position", (200, 200, 50), "Motion")
     node_panel.register_node(
         InstantiateNode, "Instantiate Object", (250, 100, 50), "Motion"
     )
@@ -2445,7 +2452,7 @@ def main():
     node_panel.register_node(
         GetGameObjectPositionNode, "Get Obj Position", (150, 150, 50), "Motion"
     )
-    node_panel.register_node(MoveToNode, "Move Cat", (120, 80, 180), "Motion")
+    node_panel.register_node(MoveToNode, "Move To", (120, 80, 180), "Motion")
     node_panel.register_node(
         TranslateAtSpeedNode, "Translate At Speed", (120, 150, 180), "Motion"
     )
@@ -2492,9 +2499,9 @@ def main():
     begin_play_node = EventBeginPlayNode(300, 100, "Event BeginPlay", (200, 50, 50))
     begin_play_node.outputs[0].on_clicked = on_pin_clicked
 
-    graph: list[GraphNode] = [
-        begin_play_node,
-    ]
+    selected_sprite = cat
+    begin_play_node.owner = cat
+    cat.script_graph.append(begin_play_node)
 
     dragging_node: Optional[GraphNode] = None
     selected_node: Optional[GraphNode] = None
@@ -2522,12 +2529,14 @@ def main():
         world_mouse = screen_to_world(pygame.Vector2(current_mouse_pos))
 
         if play_state == PlayState.PLAYING:
-            # Check and trigger event root nodes automatically.
-            for node in graph:
-                if node.poll_event():
-                    vm_engine.start_chain(node)
-
+            # Check and trigger event root nodes automatically for all sprites.
+            for sprite in scene.nodes:
+                for node in sprite.script_graph:
+                    if node.poll_event():
+                        vm_engine.start_chain(node)
             vm_engine.tick(dt)
+
+        selected_sprite_graph = selected_sprite.script_graph if selected_sprite else []
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -2544,7 +2553,11 @@ def main():
                         if play_state == PlayState.STOPPED:
                             play_state = PlayState.PLAYING
                             vm_engine.stop_all()
-                            vm_engine.start_chain(begin_play_node)
+
+                            for sprite in scene.nodes:
+                                for node in sprite.script_graph:
+                                    if isinstance(node, EventBeginPlayNode):
+                                        vm_engine.start_chain(node)
                         elif play_state == PlayState.PLAYING:
                             play_state = PlayState.PAUSED
                         elif play_state == PlayState.PAUSED:
@@ -2569,7 +2582,10 @@ def main():
                                 node.width,
                                 node.bg_surface.get_height(),
                             )
-                            if node_rect.collidepoint(current_mouse_pos):
+                            if (
+                                node_rect.collidepoint(current_mouse_pos)
+                                and selected_sprite
+                            ):
                                 world_pos = screen_to_world(
                                     pygame.Vector2(current_mouse_pos)
                                 )
@@ -2579,9 +2595,10 @@ def main():
                                     item["title"],
                                     item["color"],
                                 )
+                                new_node.owner = selected_sprite
                                 for pin in (*new_node.inputs, *new_node.outputs):
                                     pin.on_clicked = on_pin_clicked
-                                graph.append(new_node)
+                                selected_sprite.script_graph.append(new_node)
 
                                 dragging_node = new_node
                                 selected_node = new_node
@@ -2590,17 +2607,35 @@ def main():
                     else:
                         # Handle workspace click
                         node_clicked = False
-                        for node in reversed(
-                            graph
-                        ):  # Check nodes in reverse order for proper z-index
+                        for node in reversed(selected_sprite_graph):
                             if node.handle_mouse(event, world_mouse):
                                 dragging_node = node
                                 selected_node = node
                                 drag_offset = world_mouse - dragging_node.pos()
                                 node_clicked = True
                                 break
+
                         if not node_clicked:
                             selected_node = None
+
+                            for sprite in reversed(scene.nodes):
+                                if hasattr(sprite, "texture"):
+                                    sprite_screen_pos = world_to_screen(
+                                        sprite.GetPosition()
+                                    )
+                                    rect = sprite.texture.get_rect(
+                                        center=(
+                                            int(sprite_screen_pos.x),
+                                            int(sprite_screen_pos.y),
+                                        )
+                                    )
+
+                                    if rect.collidepoint(current_mouse_pos):
+                                        if selected_sprite != sprite:
+                                            selected_sprite = sprite
+                                            clicked_pin = None  # drop pin connection lines when swapping context.
+                                        break
+
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 2:
                     panning = False
@@ -2613,7 +2648,7 @@ def main():
                         # Check if we dropped it on another pin
                         dropped_on_pin = None
                         if current_mouse_pos[0] >= node_panel.width:
-                            for node in graph:
+                            for node in selected_sprite_graph:
                                 for pin in (*node.inputs, *node.outputs):
                                     pin_pos = node.get_pin_world_pos(pin)
                                     screen_pin_pos = world_to_screen(pin_pos)
@@ -2723,7 +2758,9 @@ def main():
                                     new_node.false_pin = out_pin
 
                         new_node._build_cached_surface()
-                        graph.append(new_node)
+                        new_node.owner = selected_sprite
+                        if selected_sprite:
+                            selected_sprite.script_graph.append(new_node)
                         selected_node = new_node
                         print(f"Copied node: {new_node.title}")
 
@@ -2736,11 +2773,14 @@ def main():
                 print("Executing test VM...")
 
                 vm_engine.stop_all()  # Clear previous tasks if any.
-                vm_engine.start_chain(begin_play_node)
+                for sprite in scene.nodes:
+                    for node in sprite.script_graph:
+                        if isinstance(node, EventBeginPlayNode):
+                            vm_engine.start_chain(node)
 
             is_in_panel = current_mouse_pos[0] < node_panel.width
 
-            for node in graph:
+            for node in selected_sprite_graph:
                 if is_in_panel and event.type in (
                     pygame.MOUSEBUTTONDOWN,
                     pygame.MOUSEBUTTONUP,
@@ -2764,15 +2804,19 @@ def main():
 
         draw_grid(screen, WIDTH, HEIGHT)
 
-        cat.RenderAt(surface=screen, pos=world_to_screen(cat.GetPosition()))
-
         # Render all newly added objects in the scene so instantiated objects show up.
         for obj in scene.nodes:
-            if obj is not cat and hasattr(obj, "RenderAt"):
-                obj.RenderAt(surface=screen, pos=world_to_screen(obj.GetPosition()))
+            if hasattr(obj, "RenderAt"):
+                pos = world_to_screen(obj.GetPosition())
+                obj.RenderAt(surface=screen, pos=pos)
+
+                # Draw selection border.
+                if obj is selected_sprite:
+                    rect = obj.texture.get_rect(center=(int(pos.x), int(pos.y)))
+                    pygame.draw.rect(screen, (255, 255, 0), rect, width=2)
 
         # Draw all connections.
-        for node in graph:
+        for node in selected_sprite_graph:
             for pin in node.outputs:
                 # Only iterate outputs to prevent drawing lines twice.
                 for connected_pin in pin.connected_pins:
@@ -2785,7 +2829,7 @@ def main():
 
                     draw_bezier(screen, start_pos, end_pos, wire_color, width=3)
 
-        for node in graph:
+        for node in selected_sprite_graph:
             node.draw(screen)
 
         # Draw a line from the clicked pin to the current mouse position.

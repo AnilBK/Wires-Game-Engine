@@ -15,6 +15,7 @@ class GameObject:
     def __init__(self, identifier: str) -> None:
         self.identifier = identifier
         self.position = pygame.Vector2(0, 0)
+        self.script_graph = []
 
     def SetPosition(self, new_position: pygame.Vector2) -> None:
         self.position.update(new_position)
@@ -46,7 +47,7 @@ class Sprite(GameObject):
         )
 
         clone.position = self.position.copy()
-
+        clone.script_graph = []
         return clone
 
     def Render(self, surface: pygame.Surface):
