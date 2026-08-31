@@ -1471,6 +1471,37 @@ class DoOnceNode(GraphNode):
             yield from self.trigger_out_pin("Completed")
 
 
+class CallCustomEventNode(GraphNode):
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color)
+        self.add_input(Pin("Exec Left", PinType.EXEC))
+        self.add_input(
+            Pin(
+                "Event Name",
+                PinType.STRING,
+                ui_component=TextBoxComponent("MyEvent", str),
+            )
+        )
+        self.add_output(Pin("Exec Right", PinType.EXEC))
+        self._build_cached_surface()
+
+    def execute(self, triggered_pin: Optional[Pin] = None):
+        target_name = self.get_input_value("Event Name")
+
+        if self.owner and target_name is not None:
+            target_str = str(target_name)
+
+            for node in self.owner.script_graph:
+                if isinstance(node, AddCustomEventNode):
+                    node_name = node.get_input_value("Event Name")
+
+                    if node_name is not None and str(node_name) == target_str:
+                        yield from node.trigger_out_pin("Exec Right")
+                        break
+
+        yield from self.trigger_out_pin("Exec Right")
+
+
 class FlipFlopNode(GraphNode):
     def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
         super().__init__(x, y, title, header_color)
@@ -2202,6 +2233,21 @@ class EventKeyReleasedNode(BaseKeyEventNode):
         return valid and not is_down and was_down
 
 
+class AddCustomEventNode(GraphNode):
+    def __init__(self, x: float, y: float, title: str, header_color: tuple) -> None:
+        super().__init__(x, y, title, header_color)
+
+        self.add_input(
+            Pin(
+                "Event Name",
+                PinType.STRING,
+                ui_component=TextBoxComponent("MyEvent", str),
+            )
+        )
+        self.add_output(Pin("Exec Right", PinType.EXEC))
+        self._build_cached_surface()
+
+
 class EventTickNode(GraphNode):
     """Fires every single frame (engine tick)."""
 
@@ -2412,6 +2458,9 @@ def main():
     node_panel.register_node(
         EventKeyReleasedNode, "Event Key Released", (200, 50, 50), "Events"
     )
+    node_panel.register_node(
+        AddCustomEventNode, "Add Custom Event", (200, 50, 50), "Events"
+    )
 
     # Sensing
     node_panel.register_node(KeyPressedNode, "Key Pressed", (180, 100, 100), "Sensing")
@@ -2477,6 +2526,9 @@ def main():
     node_panel.register_node(CooldownNode, "Cooldown Node", (160, 100, 150), "Control")
     node_panel.register_node(DoForeverNode, "Do Forever", (110, 110, 110), "Control")
     node_panel.register_node(DoOnceNode, "Do Once", (160, 80, 80), "Control")
+    node_panel.register_node(
+        CallCustomEventNode, "Call Custom Event", (50, 150, 200), "Control"
+    )
     node_panel.register_node(FlipFlopNode, "Flip Flop Node", (160, 100, 50), "Control")
     node_panel.register_node(BranchNode, "Branch (If/Else)", (160, 100, 50), "Control")
     node_panel.register_node(ForLoopNode, "For Loop", (80, 120, 160), "Control")
